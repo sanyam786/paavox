@@ -46,6 +46,13 @@ Thumbs.db
 *.swp
 *.swo
 
+# ── TypeScript build cache ────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Claude Code local settings & memory ──────────────────────────────────────
+.claude/
+memory/
+
 # ── Misc ─────────────────────────────────────────────────────────────────────
 *.log
 *.tmp
