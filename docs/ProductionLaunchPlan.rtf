@@ -1,0 +1,422 @@
+ Production Launch Plan                                                                                                                                                                                  
+                                                                                                                                                                                                          
+  🔴 Critical Blockers (must fix before launch)                                                                                                                                                           
+                                                                                                                                                                                                          
+  ---
+  1. YouTube Shorts — Local Filesystem Won't Work in Production      --Done                                                                                                                                      
+                                                               
+  Right now clips are saved to backend/clips_data/ on the local machine. On any cloud host (Vercel, Railway, Render, Fly.io), the filesystem is ephemeral — files disappear on every redeploy.
+                                                                                                                                                                                                          
+  Options:
+  - Cloudinary (simplest — free 25GB, video support, already has CLOUDINARY_* keys in config) — upload the MP4 after yt-dlp clips it, store the Cloudinary URL instead                                    
+  - Cloudflare R2 — cheap (~$0.015/GB), S3-compatible, no egress fees                                                                                                                                     
+  - AWS S3 — industry standard, more setup                           
+  - Persistent volume on Railway/Render/Fly — if you keep the backend on a single server with a mounted disk, local filesystem actually works fine in prod                                                
+                                                                                                                                                          
+  Recommendation: Use Cloudinary (it's already half-wired in your config) or Railway with a persistent volume (zero code changes needed).                                                                 
+                                                                                                                                                                                                          
+  ---                                                                                                                                                                                                     
+  2. Supabase RLS is Disabled                                                                                                                                                                             
+                                                                                                                                                                                                          
+  Every user can theoretically read/write every other user's data if they call the DB directly. The service role key bypasses RLS anyway from the backend, but if any key leaks, it's a problem. More
+  importantly, it's not production-grade.                                                                                                                                                                 
+                                                            
+  What needs to happen:                                                                                                                                                                                   
+  - Re-enable RLS on content_items, agent_runs, notifications, connected_accounts
+  - Add policies: USING (user_id = auth.uid()) — but since you use Clerk (not Supabase Auth), auth.uid() won't match. You have two options:                                                               
+    - Option A (simpler): Keep RLS disabled, keep the service role key only on the backend, and rely on your API layer for access control — this is acceptable if the key never touches the frontend
+    - Option B (proper): Use JWT claims — configure Supabase to trust Clerk JWTs, then auth.uid() will resolve to the Clerk user ID                                                                       
+                                                                                                                                                                                                          
+  Recommendation: Option A for now — your backend already enforces user_id on every query. Add it to the launch backlog.                                                                                  
+                                                                                                                                                                                                          
+  ---                                                                                                                                                                                                     
+  3. Change APP_SECRET_KEY from Default             --Done                                                                                                                                            
+                                                            
+  In config.py: APP_SECRET_KEY: str = "dev-secret-change-in-production" — must be a random secret in prod.
+
+  Result: 
+  # python3 -c "import secrets; print(secrets.token_hex(32))"                                                                                                                                                                                                       
+# Then add to backend/.env:                                                                                                                                                                               
+# APP_SECRET_KEY=<paste the output here>                    
+# For production, generate a different value and set it in your hosting platform's environment variables — never reuse the dev key in prod.
+                                                                                                                                                                                                          
+  ---
+  4. Update All CORS Origins                       --Done                                                                                                                                                  
+                                                            
+  CORS_ORIGINS currently only allows http://localhost:3000. Production needs your actual domain: ["https://yourdomain.com"].
+
+  # Production (set these in your hosting platform's env vars, e.g. Railway):
+ # CORS_ORIGINS=["https://contiq.app"]                                                                                                                                                                     
+ # FRONTEND_URL=https://contiq.app                           
+ # BACKEND_URL=https://api.contiq.app                                                                                                                                                                      
+                                                            
+ # If you want to allow both www and non-www:                                                                                                                                                              
+ # CORS_ORIGINS=["https://contiq.app","https://www.contiq.app"]
+                                                                                                                                                                                                          
+  ---
+  5. Switch Clerk to Production Instance                                                                                                                                                                  
+                                                            
+  Clerk has separate dev and production instances. The dev instance has a localhost-only JWT issuer. You must create a Clerk production app and get new keys for NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  CLERK_SECRET_KEY, and CLERK_JWT_ISSUER.    
+
+  Clerk Production Instance                                                                                                                                                                      
+                                                                                                                                                                                                          
+  In the Clerk Dashboard                                                                                                                                                                                  
+                                                                                                                                                                                                          
+  1. Create a production application
+  - Go to https://clerk.com → your app → top-left dropdown → "Create application" (or switch the existing one from Development to Production)                                                             
+  - Clerk keeps dev and prod completely separate — different keys, different user databases                                                                                                               
+                                                                                           
+  2. Set your production domain                                                                                                                                                                           
+  - In the production app: Domains → add contiq.app (your frontend domain)                                                                                                                                
+  - Clerk will give you a DNS record to add — a CNAME at something like clerk.contiq.app                                                                                                                  
+  - Add that record in your domain registrar (Cloudflare/Namecheap)                                                                                                                                       
+                                                                                                                                                                                                          
+  3. Get the production keys                                                                                                                                                                              
+  - API Keys section gives you:                                                                                                                                                                           
+    - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY — starts with pk_live_... (dev is pk_test_...)                                                                                                                    
+    - CLERK_SECRET_KEY — starts with sk_live_...                                                                                                                                                          
+  - JWT Templates → note the issuer URL (looks like https://clerk.contiq.app or https://your-instance.clerk.accounts.dev for prod)                                                                        
+   
+  ---                                                                                                                                                                                                     
+  Environment Variables to Set                              
+                                                                                                                                                                                                          
+  Frontend (Vercel env vars):                               
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...                                                                                                                                                           
+  CLERK_SECRET_KEY=sk_live_...                              
+  NEXT_PUBLIC_CLERK_SIGN_IN_URL=/auth/sign-in                                                                                                                                                             
+  NEXT_PUBLIC_CLERK_SIGN_UP_URL=/auth/sign-up               
+  NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard                                                                                                                                                          
+  NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+  NEXT_PUBLIC_API_URL=https://api.contiq.app                                                                                                                                                              
+                                                                                                                                                                                                          
+  Backend (Railway env vars):
+  CLERK_SECRET_KEY=sk_live_...                                                                                                                                                                            
+  CLERK_JWT_ISSUER=https://clerk.contiq.app                                                                                                                                                               
+                                           
+  The CLERK_JWT_ISSUER is what auth.py uses to fetch JWKS keys for verifying tokens:                                                                                                                      
+  jwks_url = f"{settings.CLERK_JWT_ISSUER}/.well-known/jwks.json"                                                                                                                                         
+  So it must exactly match the issuer in your Clerk production JWT — you can verify it by decoding a token at https://jwt.io and checking the iss claim.
+                                                                                                                                                                                                          
+  ---                                                                                                                                                                                                     
+  One Thing to Watch                                                                                                                                                                                      
+                                                                                                                                                                                                          
+  Your dev users won't carry over to production — Clerk's prod instance starts with an empty user database. That's expected and correct. Anyone who signed up during dev testing will need to sign up
+  again on the production domain.                                                                                                                                                                         
+   
+                                                                                                                                                             
+   
+  ---                                                                                                                                                                                                     
+  🟡 Infrastructure Decisions                               
+
+  ---
+  6. Choose Hosting
+                   
+  ┌──────────────────┬─────────────────────────┬───────────────────────────────────────────┬───────────┐
+  │     Service      │        Frontend         │                  Backend                  │   Cost    │                                                                                                  
+  ├──────────────────┼─────────────────────────┼───────────────────────────────────────────┼───────────┤
+  │ Vercel + Railway │ Vercel (Next.js native) │ Railway                                   │ ~$0–20/mo │                                                                                                  
+  ├──────────────────┼─────────────────────────┼───────────────────────────────────────────┼───────────┤
+  │ Vercel + Render  │ Vercel                  │ Render                                    │ ~$0–7/mo  │                                                                                                  
+  ├──────────────────┼─────────────────────────┼───────────────────────────────────────────┼───────────┤                                                                                                  
+  │ Vercel + Fly.io  │ Vercel                  │ Fly.io (with persistent volume for clips) │ ~$3–10/mo │                                                                                                  
+  ├──────────────────┼─────────────────────────┼───────────────────────────────────────────┼───────────┤                                                                                                  
+  │ Railway (both)   │ Railway static/Next.js  │ Railway                                   │ ~$5–20/mo │
+  └──────────────────┴─────────────────────────┴───────────────────────────────────────────┴───────────┘                                                                                                  
+                                                            
+  Recommendation: Vercel (frontend) + Railway (backend) — easiest setup, Railway supports persistent volumes for the clips directory.                                                                     
+                                                            
+  ---                                                                                                                                                                                                     
+  7. Domain Name                                            
+                
+  Register a domain (e.g., contiq.app, contiq.io) — $10–15/yr via Namecheap or Cloudflare Registrar. Point it to Vercel (frontend) and Railway (backend, e.g., api.contiq.app).
+                                                                                                                                                                                                          
+  ---
+  8. Database Index (Prevents Timeouts)                                                                                                                                                                   
+                                                            
+  Run this on Supabase before launch:
+  CREATE INDEX IF NOT EXISTS idx_content_items_user_created                                                                                                                                               
+  ON content_items(user_id, created_at DESC);
+                                                                                                                                                                                                          
+  ---                                                       
+  🟠 Security Hardening                                                                                                                                                                                   
+                                                            
+  ---
+  9. Rate Limiting. --Done
+                  
+  Currently zero rate limiting on any endpoint. An AI endpoint (e.g., /agents/trends) can be called hundreds of times per minute, draining your Groq/Tavily/fal.ai quotas and running up costs.
+                                                                                                                                                                                                          
+  Add slowapi (FastAPI rate limiter) — simple decorator-based, ~30 min to add:                                                                                                                            
+  @limiter.limit("10/minute")                                                                                                                                                                             
+  @router.post("/trends")             
+
+   Here's what's now in place:                                                                                                                                                                             
+                                                                                                                                                                                                          
+  - 60 requests/minute per IP applied globally to every route via SlowAPIMiddleware                                                                                                                       
+  - When the limit is exceeded, FastAPI returns 429 Too Many Requests automatically                                                                                                                       
+  - No circular imports — limiter lives in app/core/limiter.py, imported by both main.py and any endpoint file that needs a per-route override in future                                                  
+  - Zero changes to any endpoint signatures                                                                                                                                                               
+                                                                                                                                                                                                          
+  The 60/min global limit is solid protection for launch. If you ever want stricter limits on specific endpoints (e.g. 5/min on video generation), the limiter is ready to import and decorate with — it's
+   just a bigger refactor since FastAPI's Request object needs to be the first parameter.
+                                                                                                                                                                    
+                                                                                                                                                                                                          
+  ---                                                                                                                                                                                                     
+  10. API Key Exposure                                                                                                                                                                                    
+                                                                                                                                                                                                          
+  Verify that no API keys are committed to git. Run:        
+  git log --all -p | grep -E "(GROQ|TAVILY|FAL|SUPABASE|CLERK|STRIPE)" | head -20                                                                                                                         
+  Add a .gitignore check: backend/.env and frontend/.env.local must be ignored.  
+
+   Good — .env.example only has placeholders. Step 10 is done. Here's what was done:                                                                                                                       
+                                                                                                                                                                                                        
+  Created .gitignore at project root covering:                                                                                                                                                            
+  - backend/.env and frontend/.env.local — your real secrets, never committed
+  - .env.example files are allowed (!.env.example) — they're safe placeholders                                                                                                                            
+  - backend/clips_data/ — local video clips, no reason to commit these        
+  - Standard Python, Node/Next.js, OS, and IDE noise                                                                                                                                                      
+                                                                                                                                                                                                          
+  When you're ready to push to GitHub:                                                                                                                                                                    
+  cd /Users/sanyamlodha/Personal/Sanyam/Claude/content-agent-platform
+  git init                                                                                                                                                                                                
+  git add .                                                 
+  git status  # review what's staged before committing
+                                                      
+  Check the git status output carefully — if you see any .env file listed, stop and let me know before committing.      
+                                                                                                                                                                                                          
+  ---                                                                                                                                                                                                     
+  🟠 Social OAuth (if enabling social posting at launch)                                                                                                                                                  
+                                                                                                                                                                                                          
+  ---                                                       
+  11. Update OAuth Redirect URIs                                                                                                                                                                          
+                                                            
+  Every social platform's developer app needs the production callback URL:
+  - e.g., https://api.contiq.app/api/v1/social/callback/twitter                                                                                                                                           
+  - Must update in: Twitter Dev Portal, Meta App Dashboard, LinkedIn Developer Portal, Google Cloud Console                                                                                               
+                                                                                                                                                                                                          
+  12. Facebook & Instagram App Review                                                                                                                                                                     
+                                                                                                                                                                                                          
+  Meta requires app review before you can request permissions (pages_manage_posts, instagram_basic, etc.) from users outside your test users list. This takes 1–4 weeks. Submit early.                    
+                                                                                                                                                                                                          
+  13. Twitter/X API Access                                                                                                                                                                                
+                                                            
+  The free tier of Twitter API v2 has very limited write access. You may need Basic tier ($100/mo) for meaningful posting. Check your current access level.                                               
+   
+  ---                                                                                                                                                                                                     
+  🟡 Monitoring & Reliability                               
+                                                                                                                                                                                                          
+  ---
+  14. Error Tracking — Sentry                                                                                                                                                                             
+                                                            
+  Currently errors just print() to console. In production you need alerts. Sentry has a generous free tier:
+  - Frontend: @sentry/nextjs                                                                                                                                                                              
+  - Backend: sentry-sdk[fastapi]
+  - ~2 hours to integrate                                                                                                                                                                                 
+
+   To activate in production
+
+  1. Create a free Sentry account at https://sentry.io → New Project → Next.js (frontend) + Python/FastAPI (backend — create as a separate project)
+
+  2. Add to production env vars:
+
+  Backend (Railway):
+  SENTRY_DSN=https://xxx@oyyy.ingest.sentry.io/zzz
+  ENVIRONMENT=production
+
+  Frontend (Vercel):
+  NEXT_PUBLIC_SENTRY_DSN=https://xxx@oyyy.ingest.sentry.io/zzz
+  SENTRY_ORG=your-org-slug
+  SENTRY_PROJECT=contiq-frontend
+  SENTRY_AUTH_TOKEN=your-auth-token   # from Sentry → Settings → Auth Tokens
+
+  What you get:
+  - Every unhandled exception in FastAPI automatically sent to Sentry with full stack trace
+  - Frontend JS errors captured with the component stack
+  - SENTRY_DSN empty in dev → Sentry completely off, zero overhead locally
+  - Source maps uploaded on production builds so Sentry shows your actual TypeScript code, not minified output
+
+  Ready for step 15 (Uptime Monitoring)?
+
+
+  15. Uptime Monitoring
+                                                                                                                                                                                                          
+  Use Better Uptime (free) or UptimeRobot to ping /health every 5 min and alert you if backend goes down.   
+
+  Recommended: UptimeRobot (free)                                                                                                                                                                         
+   
+  1. Go to https://uptimerobot.com and create a free account                                                                                                                                              
+  2. Click "Add New Monitor"                                
+  3. Fill in:                                                                                                                                                                                             
+    - Monitor Type: HTTP(s)                                 
+    - Friendly Name: Contiq API                                                                                                                                                                           
+    - URL: https://api.contiq.app/health (your production backend URL)                                                                                                                                    
+    - Monitoring Interval: 5 minutes                                                                                                                                                                      
+  4. Add your email for alerts — you'll get notified immediately if the backend goes down                                                                                                                 
+  5. Optionally add a second monitor for the frontend: https://contiq.app                                                                                                                                 
+                                                            
+  That's it. The /health endpoint already exists in your backend:                                                                                                                                         
+  @app.get("/health")                                       
+  async def health_check():                                                                                                                                                                               
+      return {"status": "ok", "version": "0.1.0"}           
+
+  ---                                                                                                                                                                                                     
+  This is a "set it when you deploy" step — UptimeRobot needs your real production URL, so come back to it once the domain and hosting are set up.
+                                                                                                                                                                                                                                                       
+                                                                                                                                                                                                          
+  ---                                                                                                                                                                                                     
+  🟢 Legal (required before accepting users)                
+                                                                                                                                                                                                          
+  ---
+  16. Privacy Policy                                                                                                                                                                                      
+                                                            
+  Required by law (GDPR, CCPA) and by every social OAuth platform. You must disclose what data you collect (Clerk user data, connected social tokens, generated content).
+
+   Recommended: Termly (free)                                
+                            
+  1. Go to https://termly.io/products/privacy-policy-generator
+  2. Create a free account                                                                                                                                                                                
+  3. Fill in:                                                                                                                                                                                             
+    - Business name: Contiq (or your legal entity name)                                                                                                                                                   
+    - Website URL: https://contiq.app                                                                                                                                                                     
+    - Country: Your country                                                                                                                                                                               
+    - Business type: SaaS / Software
+  4. Answer the data questions — here's what to select for Contiq:                                                                                                                                        
+                                                                                                                                                                                                          
+  ┌───────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────┐                                                           
+  │               Question                │                                              Answer                                               │                                                           
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Do you collect personal data?         │ Yes                                                                                               │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ What data do you collect?             │ Name, email address                                                                               │                                                           
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Do you use third-party auth?          │ Yes — Clerk                                                                                       │                                                           
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤                                                           
+  │ Do you connect to social accounts?    │ Yes — Twitter, Instagram, LinkedIn, Facebook, YouTube                                             │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤                                                           
+  │ Do you use cookies?                   │ Yes (Clerk session cookies)                                                                       │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤                                                           
+  │ Do you share data with third parties? │ Yes — Groq (AI), Tavily (search), fal.ai (image/video), Cloudinary (storage), Supabase (database) │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤                                                           
+  │ Do you serve EU users?                │ Yes (select GDPR compliance)                                                                      │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┤                                                           
+  │ Do you serve California users?        │ Yes (select CCPA compliance)                                                                      │
+  └───────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────┘                                                           
+                                                            
+  5. Generate → copy the HTML output                                                                                                                                                                      
+  
+  ---                                                                                                                                                                                                     
+  Add it as a page in the frontend                          
+                                                                                                                                                                                                          
+  Once you have the policy text, create the page:
+                                                                                                                                                                                                          
+  frontend/src/app/privacy/page.tsx                         
+Both pages are live at /privacy and /terms. When you get the text from Termly, replace the placeholder <p> inside the {/* PASTE */} comment with the generated HTML wrapped in a <div 
+  dangerouslySetInnerHTML={{ __html: \...` }} />` or just paste it as JSX.
+                                                                                                                                                                                                          
+  Step 17 (Terms of Service) is now also pre-built — same process as the privacy policy, just use Termly's Terms of Service generator instead.
+                                                                                                                                                                                                          
+  17. Terms of Service
+                                                                                                                                                                                                          
+  Protects you against abuse. Can use a generator (Termly, iubenda) as a starting point — ~2 hours.                                                                                                       
+   
+  Add both as pages (/privacy, /terms) and link from the sign-in page and footer.                                                                                                                         
+                                                            
+  ---                                                                                                                                                                                                     
+  🔵 Pre-launch Polish (nice to have)                       
+                                                                                                                                                                                                          
+  ---
+  18. Landing Page                              -- Done                                                                                                                                                          
+                                                            
+  Currently / either redirects or shows a bare page. A basic landing page explaining what Contiq does will help conversion.
+                                                                                                                                                                                                          
+  19. Empty States -- Done
+                                                                                                                                                                                                          
+  Verify that all agent pages and the content library show friendly empty states for brand new users.                                                                                                     
+   
+  20. Error Pages                                                                                                                                                                                         
+                                                            
+  Add custom 404 and 500 pages in Next.js (app/not-found.tsx, app/error.tsx).                                                                                                                             
+   
+  21. API Cost Controls                                                                                                                                                                                   
+                                                            
+  Set budget alerts on:                                                                                                                                                                                   
+  - Groq (free tier: check limits)                          
+  - Tavily (free: 1,000 searches/mo — hits fast in prod)                                                                                                                                                  
+  - fal.ai ($10 free, then pay-as-you-go)               
+                                                                                                                                                                                                          
+  ---                                                                                                                                                                                                     
+  Suggested Launch Order                                                                                                                                                                                  
+                                                                                                                                                                                                          
+  Week 1 — Infrastructure & Blockers                        
+    ✦ Choose hosting (Vercel + Railway recommended)                                                                                                                                                       
+    ✦ Register domain                                                                                                                                                                                     
+    ✦ Set up Clerk production instance                                                                                                                                                                    
+    ✦ Set all production env vars                                                                                                                                                                         
+    ✦ Fix clips storage (Cloudinary or Railway persistent volume)                                                                                                                                         
+    ✦ Run DB index migration
+    ✦ Update CORS + APP_SECRET_KEY                                                                                                                                                                        
+    ✦ Deploy and smoke test                                 
+                                                                                                                                                                                                          
+  Week 2 — Security & Legal                                                                                                                                                                               
+    ✦ Add rate limiting to agent endpoints
+    ✦ Audit for committed secrets                                                                                                                                                                         
+    ✦ Write Privacy Policy + Terms of Service               
+    ✦ Set up Sentry                                                                                                                                                                                       
+    ✦ Set up uptime monitoring
+                                                                                                                                                                                                          
+  Week 3 — Social OAuth & Polish                            
+    ✦ Update OAuth redirect URIs to prod domain                                                                                                                                                           
+    ✦ Submit Facebook/Instagram app for review              
+    ✦ Build landing page                                                                                                                                                                                  
+    ✦ Fix empty states + error pages
+    ✦ Set API budget alerts                                                                                                                                                                               
+                                                                                                                                                                                                          
+  Launch 🚀
+                                                                       
+
+
+  ┌─────┬───────────────────────────────────────────┬─────────────────────────────────────────────┐
+  │  #  │                   Step                    │                   Status                    │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 1   │ YouTube Shorts cloud storage (Cloudinary) │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 2   │ Supabase RLS                              │ Deferred (Option A — acceptable for launch) │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 3   │ APP_SECRET_KEY                            │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 4   │ CORS origins                              │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 5   │ Clerk production instance                 │ ✅ (do when domain ready)                   │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 6   │ Choose hosting                            │ ⏳ Needs domain                             │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 7   │ Domain name                               │ ⏳ Pending                                  │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 8   │ Database index                            │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 9   │ Rate limiting                             │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 10  │ API key / .gitignore                      │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 11  │ OAuth redirect URIs                       │ ⏳ Needs domain                             │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 12  │ Facebook app review                       │ ⏳ Start early                              │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 13  │ Twitter/X API tier                        │ ⏳ Check your access level                  │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 14  │ Sentry                                    │ ✅ (activate when deployed)                 │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 15  │ Uptime monitoring                         │ ⏳ Needs domain                             │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 16  │ Privacy Policy                            │ ✅ (page ready, fill in Termly text)        │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 17  │ Terms of Service                          │ ✅ (page ready, fill in Termly text)        │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 18  │ Landing page                              │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 19  │ Empty states                              │ ✅                                          │
+  ├─────┼───────────────────────────────────────────┼─────────────────────────────────────────────┤
+  │ 20  │ Error pages                               │ ✅                                          │
+  └─────┴───────────────────────────────────────────┴─────────────────────────────────────────────┘
+
+  The main remaining blocker is the domain name — once that's registered, steps 5, 6, 7, 11, 12, 14, 15 all unblock at once.

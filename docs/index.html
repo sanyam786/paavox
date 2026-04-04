@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contiq — Technical Documentation</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand:       #6366f1;
+      --brand-light: #eef2ff;
+      --brand-dark:  #4f46e5;
+      --bg:          #f8fafc;
+      --surface:     #ffffff;
+      --border:      #e2e8f0;
+      --text:        #1e293b;
+      --muted:       #64748b;
+      --code-bg:     #f1f5f9;
+      --sidebar-w:   260px;
+      --green:       #22c55e;
+      --blue:        #3b82f6;
+      --purple:      #a855f7;
+      --orange:      #f97316;
+      --rose:        #f43f5e;
+      --yellow:      #eab308;
+      --teal:        #14b8a6;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      display: flex;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0; left: 0;
+      overflow-y: auto;
+      padding: 24px 0;
+      z-index: 100;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 20px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .sidebar-logo .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--brand);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 900; font-size: 16px;
+    }
+
+    .sidebar-logo .logo-text { font-weight: 800; font-size: 18px; color: var(--text); }
+    .sidebar-logo .logo-sub  { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .sidebar-section {
+      padding: 4px 20px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 12px 0 4px;
+    }
+
+    #sidebar a {
+      display: block;
+      padding: 7px 20px;
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: 0;
+      transition: all 0.15s;
+    }
+
+    #sidebar a:hover { color: var(--brand); background: var(--brand-light); }
+    #sidebar a.active { color: var(--brand); font-weight: 600; background: var(--brand-light); border-right: 3px solid var(--brand); }
+
+    /* ── Main ── */
+    #main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      max-width: 960px;
+      padding: 48px 48px 96px;
+    }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 72px; }
+
+    h1 { font-size: 32px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
+    h2 { font-size: 22px; font-weight: 700; color: var(--text); margin: 48px 0 16px; padding-top: 16px; }
+    h3 { font-size: 16px; font-weight: 700; color: var(--text); margin: 24px 0 10px; }
+    h4 { font-size: 14px; font-weight: 600; color: var(--text); margin: 16px 0 6px; }
+
+    p  { font-size: 14px; color: var(--muted); margin-bottom: 12px; line-height: 1.75; }
+    ul { padding-left: 20px; margin-bottom: 12px; }
+    li { font-size: 14px; color: var(--muted); margin-bottom: 6px; line-height: 1.65; }
+    li strong { color: var(--text); }
+
+    .lead {
+      font-size: 16px;
+      color: var(--muted);
+      margin-bottom: 0;
+      line-height: 1.8;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, #eef2ff 0%, #fdf4ff 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 40px 36px;
+      margin-bottom: 48px;
+    }
+    .hero h1 { font-size: 36px; margin-bottom: 4px; }
+    .hero .subtitle { font-size: 15px; color: var(--muted); margin-bottom: 24px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .agent-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: box-shadow 0.2s;
+    }
+    .agent-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+
+    .agent-icon {
+      font-size: 24px;
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 12px;
+    }
+
+    .agent-name  { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .agent-route { font-size: 11px; color: var(--muted); font-family: monospace; margin-bottom: 8px; }
+    .agent-desc  { font-size: 13px; color: var(--muted); line-height: 1.65; }
+
+    .agent-tags  { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+    .tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: var(--brand-light);
+      color: var(--brand-dark);
+    }
+
+    /* ── Tech stack table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--code-bg);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: top;
+    }
+    td:first-child { font-weight: 600; white-space: nowrap; }
+    td .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+
+    /* ── Code ── */
+    pre, code {
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12.5px;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 20px 24px;
+      border-radius: 12px;
+      overflow-x: auto;
+      margin: 16px 0;
+      line-height: 1.7;
+    }
+    code {
+      background: var(--code-bg);
+      color: var(--brand-dark);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    pre code { background: none; color: inherit; padding: 0; }
+
+    /* ── Schema ── */
+    .schema-table {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .schema-table .schema-head {
+      background: var(--code-bg);
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap-8px;
+    }
+    .schema-table .schema-head span { font-family: monospace; font-size: 12px; color: var(--brand); margin-left: 8px; font-weight: 400; }
+    .schema-table table { margin: 0; }
+
+    /* ── Callout ── */
+    .callout {
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.65;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout.info    { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .callout.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .callout.warn    { background: #fffbeb; border: 1px solid #fed7aa; color: #92400e; }
+    .callout .icon   { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ── Divider ── */
+    hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    /* ── Flow diagram ── */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    .flow-step {
+      background: var(--brand-light);
+      border: 1px solid #c7d2fe;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--brand-dark);
+      white-space: nowrap;
+    }
+    .flow-arrow {
+      color: var(--muted);
+      font-size: 18px;
+      padding: 0 6px;
+    }
+
+    /* ── Endpoint block ── */
+    .endpoint {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+    }
+    .method {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+    .method.get    { background: #dcfce7; color: #166534; }
+    .method.post   { background: #dbeafe; color: #1e40af; }
+    .method.delete { background: #fee2e2; color: #991b1b; }
+    .endpoint-path { font-family: monospace; font-size: 13px; color: var(--text); flex: 1; }
+    .endpoint-desc { font-size: 12px; color: var(--muted); }
+
+    /* ── Section anchors styling ── */
+    .section-anchor { display: block; position: relative; top: -80px; visibility: hidden; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     SIDEBAR
+═══════════════════════════════════════════════ -->
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">C</div>
+    <div>
+      <div class="logo-text">Contiq</div>
+      <div class="logo-sub">Technical Docs</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">Overview</div>
+  <a href="#overview">Project Overview</a>
+  <a href="#architecture">Architecture</a>
+
+  <div class="sidebar-section">Tech Stack</div>
+  <a href="#frontend-tech">Frontend</a>
+  <a href="#backend-tech">Backend</a>
+  <a href="#infrastructure">Infrastructure & APIs</a>
+
+  <div class="sidebar-section">Database</div>
+  <a href="#schema">Schema & Tables</a>
+  <a href="#auth-flow">Authentication Flow</a>
+
+  <div class="sidebar-section">Features</div>
+  <a href="#pipeline">Pipeline</a>
+  <a href="#agents-overview">Agents Overview</a>
+  <a href="#agent-trend">Trend Agent</a>
+  <a href="#agent-competitor">Competitor Analysis</a>
+  <a href="#agent-content-writer">Content Writer</a>
+  <a href="#agent-caption">Caption Agent</a>
+  <a href="#agent-image">Image Generator</a>
+  <a href="#agent-video">Video Creator</a>
+  <a href="#agent-repurpose">Repurposing Agent</a>
+  <a href="#agent-yt-shorts">YouTube Shorts</a>
+  <a href="#agent-persona">Persona Builder</a>
+  <a href="#agent-schedule">Schedule Agent</a>
+  <a href="#agent-analytics">Analytics Agent</a>
+  <a href="#agent-collab">Collab & Outreach</a>
+  <a href="#agent-influencer">Influencer Manager</a>
+  <a href="#agent-comment">Comment Reply</a>
+
+  <div class="sidebar-section">Core Systems</div>
+  <a href="#social-posting">Social Posting</a>
+  <a href="#content-library">Content Library</a>
+  <a href="#notifications">Notifications</a>
+  <a href="#brand-settings">Brand Settings</a>
+  <a href="#api-reference">API Reference</a>
+</nav>
+
+<!-- ═══════════════════════════════════════════════
+     MAIN CONTENT
+═══════════════════════════════════════════════ -->
+<main id="main">
+
+  <!-- ── Hero ── -->
+  <div class="hero">
+    <h1>Contiq</h1>
+    <p class="subtitle">content <strong>+</strong> iq — Full-stack AI content creation and publishing platform</p>
+    <div class="badge-row">
+      <span class="badge"><span class="dot" style="background:#22c55e"></span> Next.js 14</span>
+      <span class="badge"><span class="dot" style="background:#6366f1"></span> FastAPI</span>
+      <span class="badge"><span class="dot" style="background:#f97316"></span> Claude AI</span>
+      <span class="badge"><span class="dot" style="background:#3b82f6"></span> Supabase</span>
+      <span class="badge"><span class="dot" style="background:#a855f7"></span> Clerk Auth</span>
+      <span class="badge"><span class="dot" style="background:#14b8a6"></span> Tavily Search</span>
+      <span class="badge"><span class="dot" style="background:#f43f5e"></span> 15 AI Agents</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       OVERVIEW
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="overview"></span>
+  <div class="section">
+    <h2>Project Overview</h2>
+    <p class="lead">
+      Contiq is an AI-powered content creation and publishing platform built for social media creators and brands. It provides a suite of 15 specialised AI agents that cover the full content lifecycle — from trend discovery and ideation, through creation and repurposing, to scheduling, publishing, and analytics.
+    </p>
+    <p>
+      Every agent is backed by <strong>Anthropic Claude</strong> as the LLM and optionally augmented with real-time web search via <strong>Tavily</strong>. The platform supports multi-brand management, direct publishing to Instagram, Facebook, LinkedIn, Twitter, and TikTok, and includes a no-code <strong>Pipeline</strong> system that chains multiple agents together in a single workflow.
+    </p>
+
+    <div class="callout info">
+      <span class="icon">ℹ️</span>
+      <span>The platform is branded as <strong>Contiq</strong> (content + IQ). All authentication is handled by Clerk and user data is stored in Supabase PostgreSQL with Row Level Security.</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       ARCHITECTURE
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="architecture"></span>
+  <div class="section">
+    <h2>Architecture</h2>
+
+    <div class="flow">
+      <div class="flow-step">Browser (Next.js)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Next.js API Proxy</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">FastAPI Backend</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Claude AI / Tavily</div>
+    </div>
+    <div class="flow">
+      <div class="flow-step">FastAPI Backend</div>
+      <div class="flow-arrow">↕</div>
+      <div class="flow-step">Supabase (Postgres)</div>
+    </div>
+    <div class="flow">
+      <div class="flow-step">FastAPI Backend</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Social Platform APIs</div>
+    </div>
+
+    <h3>Request Flow</h3>
+    <ol style="padding-left:20px">
+      <li style="margin-bottom:8px; font-size:14px; color: #64748b;"><strong style="color:#1e293b">Auth</strong> — Clerk issues a JWT on sign-in. The frontend stores it and sends it as <code>Authorization: Bearer &lt;token&gt;</code> on every API request.</li>
+      <li style="margin-bottom:8px; font-size:14px; color: #64748b;"><strong style="color:#1e293b">Backend auth middleware</strong> — <code>get_current_user_id()</code> verifies the Clerk JWT (RS256), extracts the user ID, and upserts the user into the <code>users</code> table on first access.</li>
+      <li style="margin-bottom:8px; font-size:14px; color: #64748b;"><strong style="color:#1e293b">Agent execution</strong> — The endpoint instantiates the relevant agent class, calls <code>agent.run(request)</code>, saves results to <code>content_items</code>, and returns the response.</li>
+      <li style="margin-bottom:8px; font-size:14px; color: #64748b;"><strong style="color:#1e293b">Social posting</strong> — <code>posting_service.py</code> dispatches to the correct platform API using stored OAuth tokens from <code>social_connections</code>.</li>
+    </ol>
+
+    <h3>Directory Structure</h3>
+    <pre><code>content-agent-platform/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/endpoints/     # FastAPI route handlers (14 files)
+│   │   ├── core/                 # Auth, config, database, clips store
+│   │   ├── schemas/              # Pydantic request/response models
+│   │   └── services/
+│   │       ├── agents/           # 15 AI agent implementations
+│   │       ├── content_service.py
+│   │       ├── posting_service.py
+│   │       ├── pipeline_service.py
+│   │       └── notification_service.py
+│   ├── clips_data/               # Persisted YouTube Shorts clips (10-day TTL)
+│   ├── requirements.txt
+│   └── .env
+├── frontend/
+│   ├── src/
+│   │   ├── app/                  # Next.js App Router pages
+│   │   ├── components/           # Shared UI components
+│   │   └── lib/                  # apiClient, useSettings hook
+│   ├── package.json
+│   └── .env.local
+└── docs/
+    └── index.html                # ← You are here</code></pre>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       FRONTEND TECH
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="frontend-tech"></span>
+  <div class="section">
+    <h2>Frontend Tech Stack</h2>
+
+    <table>
+      <tr><th>Technology</th><th>Version</th><th>Purpose</th></tr>
+      <tr>
+        <td>Next.js (App Router)</td>
+        <td>14.2</td>
+        <td><div>React framework with file-based routing, server components, and built-in API proxy.</div><div class="sub">All agent pages are client components (<code>'use client'</code>). Layouts are server components.</div></td>
+      </tr>
+      <tr>
+        <td>React</td>
+        <td>18</td>
+        <td>UI library. Hooks-based state management throughout.</td>
+      </tr>
+      <tr>
+        <td>TypeScript</td>
+        <td>5</td>
+        <td>Full type safety across all components, API responses, and hooks.</td>
+      </tr>
+      <tr>
+        <td>Tailwind CSS</td>
+        <td>3.4</td>
+        <td><div>Utility-first CSS. Custom brand colour scale, <code>.card</code>, <code>.btn-primary</code>, <code>.btn-secondary</code> utility classes defined in globals.</div></td>
+      </tr>
+      <tr>
+        <td>Clerk</td>
+        <td>^5</td>
+        <td><div>Authentication. Provides <code>&lt;ClerkProvider&gt;</code>, <code>&lt;UserButton&gt;</code>, <code>useAuth()</code>, and <code>&lt;SignIn&gt;</code> components.</div><div class="sub"><code>middleware.ts</code> protects all routes except <code>/auth/*</code>.</div></td>
+      </tr>
+      <tr>
+        <td>Axios (apiClient)</td>
+        <td>^1.6</td>
+        <td><div><code>src/lib/apiClient.ts</code> — pre-configured Axios instance. Intercepts every request to inject the Clerk JWT as <code>Authorization: Bearer</code>.</div></td>
+      </tr>
+      <tr>
+        <td>Lucide React</td>
+        <td>^0.363</td>
+        <td>Icon library used throughout the UI.</td>
+      </tr>
+      <tr>
+        <td>clsx</td>
+        <td>^2.1</td>
+        <td>Conditional class name utility used in layout and sidebar components.</td>
+      </tr>
+      <tr>
+        <td>date-fns</td>
+        <td>^3.6</td>
+        <td>Date formatting in the calendar and content library pages.</td>
+      </tr>
+    </table>
+
+    <h3>Key Frontend Patterns</h3>
+    <ul>
+      <li><strong>useSettings hook</strong> — <code>src/lib/useSettings.ts</code>. Fetches brand settings from <code>GET /api/v1/settings/</code> and caches them. All agent pages call this to pre-fill brand voice, niche, location, active platforms, etc.</li>
+      <li><strong>Optimistic UI</strong> — Saved state, posted state, and deleted state are updated in local React state immediately, without waiting for a re-fetch.</li>
+      <li><strong>Command Palette</strong> — <code>⌘K</code> opens a fuzzy-search command palette for navigating agents.</li>
+      <li><strong>Theme</strong> — Dark/light mode via <code>ThemeProvider</code> (class-based, stored in <code>localStorage</code>).</li>
+      <li><strong>Notification Bell</strong> — Polls <code>GET /api/v1/notifications/</code> every 30 seconds and shows unread count.</li>
+    </ul>
+
+    <h3>Page Routing</h3>
+    <table>
+      <tr><th>Route</th><th>Description</th></tr>
+      <tr><td><code>/</code></td><td>Landing / redirect to dashboard</td></tr>
+      <tr><td><code>/dashboard</code></td><td>Overview: recent content, quick stats, recent posts</td></tr>
+      <tr><td><code>/agents</code></td><td>Agent hub — grouped cards for all 15 agents</td></tr>
+      <tr><td><code>/agents/[agent-name]</code></td><td>Individual agent pages</td></tr>
+      <tr><td><code>/pipeline</code></td><td>Pipeline list — create and manage multi-agent workflows</td></tr>
+      <tr><td><code>/pipeline/[id]</code></td><td>Dynamic pipeline execution page (dynamic route)</td></tr>
+      <tr><td><code>/content</code></td><td>Content library with grid view, type/platform filters</td></tr>
+      <tr><td><code>/calendar</code></td><td>Scheduled content calendar view</td></tr>
+      <tr><td><code>/history</code></td><td>Published content history</td></tr>
+      <tr><td><code>/trends</code></td><td>Trends dashboard</td></tr>
+      <tr><td><code>/settings</code></td><td>Brand settings, social connections, API keys</td></tr>
+      <tr><td><code>/auth/sign-in</code></td><td>Clerk sign-in page</td></tr>
+      <tr><td><code>/oauth/success</code></td><td>OAuth callback — social platform connection success</td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       BACKEND TECH
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="backend-tech"></span>
+  <div class="section">
+    <h2>Backend Tech Stack</h2>
+
+    <table>
+      <tr><th>Technology</th><th>Version</th><th>Purpose</th></tr>
+      <tr>
+        <td>FastAPI</td>
+        <td>0.111</td>
+        <td><div>Async Python web framework. All agent endpoints are <code>async def</code> to support concurrent execution.</div></td>
+      </tr>
+      <tr>
+        <td>Uvicorn</td>
+        <td>0.29</td>
+        <td>ASGI server running the FastAPI app.</td>
+      </tr>
+      <tr>
+        <td>Pydantic v2</td>
+        <td>2.7</td>
+        <td>Request/response validation. All agent schemas defined in <code>schemas/agents.py</code>.</td>
+      </tr>
+      <tr>
+        <td>Anthropic SDK</td>
+        <td>0.26</td>
+        <td><div>Powers all 15 agents via <code>claude-sonnet-4-6</code>. The <code>BaseAgent._chat(system, user)</code> method wraps the SDK call.</div></td>
+      </tr>
+      <tr>
+        <td>Tavily Python</td>
+        <td>0.3.3</td>
+        <td>Real-time web search used by Trend Agent and Competitor Analysis Agent.</td>
+      </tr>
+      <tr>
+        <td>Supabase Python</td>
+        <td>2.4.3</td>
+        <td>Database client. Service-role key used for all DB operations, bypassing RLS.</td>
+      </tr>
+      <tr>
+        <td>PyJWT + cryptography</td>
+        <td>2.8 / 42.0</td>
+        <td>Verifies Clerk JWTs using RS256 and the Clerk JWKS public key.</td>
+      </tr>
+      <tr>
+        <td>httpx</td>
+        <td>0.27</td>
+        <td>Async HTTP client. Used for Supabase Storage uploads and social API calls.</td>
+      </tr>
+      <tr>
+        <td>fal-client</td>
+        <td>0.5.6</td>
+        <td>Fal.ai client for AI video generation (Video Creator agent).</td>
+      </tr>
+      <tr>
+        <td>yt-dlp</td>
+        <td>≥2024.4.9</td>
+        <td>YouTube stream URL resolution for YouTube Shorts clipping.</td>
+      </tr>
+      <tr>
+        <td>youtube-transcript-api</td>
+        <td>≥0.6.2</td>
+        <td>Fetches video transcripts for YouTube Shorts viral moment detection.</td>
+      </tr>
+      <tr>
+        <td>ffmpeg (system binary)</td>
+        <td>—</td>
+        <td>Video processing — seeks, clips, and crops YouTube Shorts to 9:16.</td>
+      </tr>
+    </table>
+
+    <h3>Base Agent Pattern</h3>
+    <p>Every agent extends <code>BaseAgent</code> which provides:</p>
+    <pre><code>class BaseAgent:
+    def __init__(self):
+        self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    def _chat(self, system: str, user: str, max_tokens: int = 1500) -> str:
+        """Synchronous Claude call. Agents call this directly."""
+        response = self.client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        return response.content[0].text
+
+    async def run(self, request) -> ...:
+        raise NotImplementedError</code></pre>
+
+    <div class="callout warn">
+      <span class="icon">⚠️</span>
+      <span><code>_chat()</code> is synchronous. Agents that need to do blocking I/O (yt-dlp, ffmpeg) wrap those calls in <code>loop.run_in_executor(None, lambda: ...)</code> to avoid blocking the event loop.</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       INFRASTRUCTURE
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="infrastructure"></span>
+  <div class="section">
+    <h2>Infrastructure &amp; Third-Party APIs</h2>
+    <table>
+      <tr><th>Service</th><th>Used For</th><th>Key</th></tr>
+      <tr><td>Anthropic</td><td>All 15 AI agents (LLM)</td><td><code>ANTHROPIC_API_KEY</code></td></tr>
+      <tr><td>Supabase</td><td>PostgreSQL database + Storage</td><td><code>SUPABASE_URL</code>, <code>SUPABASE_SERVICE_KEY</code></td></tr>
+      <tr><td>Clerk</td><td>Authentication &amp; user management</td><td><code>CLERK_SECRET_KEY</code>, <code>CLERK_JWT_ISSUER</code></td></tr>
+      <tr><td>Tavily</td><td>Real-time web search (Trend + Competitor agents)</td><td><code>TAVILY_API_KEY</code></td></tr>
+      <tr><td>Fal.ai</td><td>AI video generation</td><td><code>FAL_KEY</code></td></tr>
+      <tr><td>Instagram Graph API</td><td>Post images, Reels; read analytics</td><td>OAuth via Facebook App</td></tr>
+      <tr><td>Facebook Graph API</td><td>Post photos &amp; videos to Pages</td><td>OAuth — <code>FACEBOOK_PAGES_APP_ID/SECRET</code></td></tr>
+      <tr><td>LinkedIn API</td><td>Post text, images, videos</td><td>OAuth — <code>LINKEDIN_CLIENT_ID/SECRET</code></td></tr>
+      <tr><td>Twitter/X API v2</td><td>Post tweets &amp; threads</td><td>OAuth — <code>TWITTER_CLIENT_ID/SECRET</code></td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       DATABASE SCHEMA
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="schema"></span>
+  <div class="section">
+    <h2>Database Schema</h2>
+    <p>All tables live in the default Supabase (<strong>PostgreSQL</strong>) schema. The service-role key is used server-side; RLS is enabled on most tables but bypassed by the service key via PostgREST.</p>
+
+    <!-- users -->
+    <div class="schema-table">
+      <div class="schema-head">users <span>stores Clerk user info, synced on first JWT-authenticated request</span></div>
+      <table>
+        <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+        <tr><td>id</td><td>text PK</td><td>Clerk user ID (e.g. <code>user_xxx</code>)</td></tr>
+        <tr><td>email</td><td>text</td><td>From Clerk JWT claims</td></tr>
+        <tr><td>first_name</td><td>text</td><td></td></tr>
+        <tr><td>last_name</td><td>text</td><td></td></tr>
+        <tr><td>plan</td><td>text</td><td>Default <code>free</code></td></tr>
+        <tr><td>created_at</td><td>timestamptz</td><td>Auto-set</td></tr>
+      </table>
+    </div>
+
+    <!-- content_items -->
+    <div class="schema-table">
+      <div class="schema-head">content_items <span>every piece of generated content — captions, images, videos, shorts, scripts</span></div>
+      <table>
+        <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+        <tr><td>id</td><td>uuid PK</td><td>Auto-generated</td></tr>
+        <tr><td>user_id</td><td>text FK→users</td><td></td></tr>
+        <tr><td>agent_run_id</td><td>uuid FK→agent_runs</td><td>Nullable (FK dropped to avoid orphan errors)</td></tr>
+        <tr><td>platform</td><td>text</td><td>instagram / twitter / linkedin / tiktok / youtube / facebook / general</td></tr>
+        <tr><td>type</td><td>text</td><td>caption / written / image / video / youtube_short / repurposed / pipeline / trend-based</td></tr>
+        <tr><td>content</td><td>text</td><td>Caption text, image URL, video URL, or serve URL for shorts</td></tr>
+        <tr><td>hashtags</td><td>text[]</td><td>Array of hashtag strings (without #)</td></tr>
+        <tr><td>original_content</td><td>text</td><td>Input that generated this — topic, description, or JSON metadata</td></tr>
+        <tr><td>pipeline_id</td><td>uuid</td><td>Set when generated via Pipeline</td></tr>
+        <tr><td>image_url</td><td>text</td><td>Cover image URL for video content</td></tr>
+        <tr><td>created_at</td><td>timestamptz</td><td>Indexed: <code>(user_id, created_at DESC)</code></td></tr>
+      </table>
+    </div>
+
+    <!-- agent_runs -->
+    <div class="schema-table">
+      <div class="schema-head">agent_runs <span>audit log of every agent execution</span></div>
+      <table>
+        <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+        <tr><td>id</td><td>uuid PK</td><td></td></tr>
+        <tr><td>user_id</td><td>text FK→users</td><td></td></tr>
+        <tr><td>agent_type</td><td>text</td><td>caption / repurpose / trend / content_writer / image_generator / video_creator / …</td></tr>
+        <tr><td>status</td><td>text</td><td>pending / completed / failed</td></tr>
+        <tr><td>input</td><td>jsonb</td><td>Full request payload</td></tr>
+        <tr><td>output</td><td>jsonb</td><td>Full response payload</td></tr>
+        <tr><td>created_at</td><td>timestamptz</td><td></td></tr>
+      </table>
+    </div>
+
+    <!-- notifications -->
+    <div class="schema-table">
+      <div class="schema-head">notifications <span>RLS disabled — managed server-side only</span></div>
+      <table>
+        <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+        <tr><td>id</td><td>uuid PK</td><td></td></tr>
+        <tr><td>user_id</td><td>text</td><td>No FK constraint (dropped to avoid orphan errors)</td></tr>
+        <tr><td>type</td><td>text</td><td>e.g. <code>video_ready</code></td></tr>
+        <tr><td>title</td><td>text</td><td>Short notification title</td></tr>
+        <tr><td>body</td><td>text</td><td>Full message</td></tr>
+        <tr><td>link</td><td>text</td><td>In-app navigation path</td></tr>
+        <tr><td>read</td><td>boolean</td><td>Default false</td></tr>
+        <tr><td>created_at</td><td>timestamptz</td><td></td></tr>
+      </table>
+    </div>
+
+    <h3>Performance Notes</h3>
+    <ul>
+      <li>Composite index <code>idx_content_items_user_created</code> on <code>(user_id, created_at DESC)</code> ensures the content library query is an index scan rather than a full table scan.</li>
+      <li><code>get_all_content()</code> has a hard <code>.limit(50)</code> to prevent statement timeouts on Supabase free tier (8s limit).</li>
+      <li>RLS is disabled on <code>notifications</code> table because Supabase's service key does not bypass storage-layer RLS policies in the same way it does for PostgREST.</li>
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       AUTH FLOW
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="auth-flow"></span>
+  <div class="section">
+    <h2>Authentication Flow</h2>
+
+    <div class="flow">
+      <div class="flow-step">User signs in (Clerk)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Clerk issues RS256 JWT</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Frontend stores token</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Every API call: Authorization: Bearer &lt;token&gt;</div>
+    </div>
+    <div class="flow">
+      <div class="flow-step">Backend <code>get_current_user_id()</code></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Verify JWT with Clerk JWKS</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Extract <code>sub</code> (user ID)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Upsert into <code>users</code> table</div>
+    </div>
+
+    <div class="callout success">
+      <span class="icon">✅</span>
+      <span><strong>Auto user sync:</strong> <code>_ensure_user_exists()</code> in <code>auth.py</code> upserts the user into the <code>users</code> table on first request, using claims from the JWT (email, first_name, last_name). This eliminates the need for a Clerk webhook.</span>
+    </div>
+
+    <h3>Social OAuth Flow</h3>
+    <p>When connecting a social platform (Instagram, Facebook, LinkedIn, Twitter):</p>
+    <ol style="padding-left:20px">
+      <li style="font-size:14px;color:#64748b;margin-bottom:6px">User clicks "Connect" in Settings → redirected to platform OAuth page</li>
+      <li style="font-size:14px;color:#64748b;margin-bottom:6px">Platform redirects back to <code>/oauth/success?platform=...&code=...</code></li>
+      <li style="font-size:14px;color:#64748b;margin-bottom:6px">Backend exchanges the code for access/refresh tokens via <code>social_service.py</code></li>
+      <li style="font-size:14px;color:#64748b;margin-bottom:6px">Tokens stored in <code>social_connections</code> table; used later by <code>posting_service.py</code></li>
+    </ol>
+  </div>
+
+  <hr />
+
+  <!-- ══════════════════════════════════════════
+       PIPELINE
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="pipeline"></span>
+  <div class="section">
+    <h2>Pipeline</h2>
+    <p>The Pipeline is a no-code multi-agent workflow builder. Users create a pipeline from a topic and the system sequentially runs: <strong>Trend Research → Content Writing → Caption Generation → Video Creation → Posting Schedule</strong>.</p>
+
+    <h3>How It Works</h3>
+    <ul>
+      <li>User creates a pipeline with a topic/niche on <code>/pipeline</code>.</li>
+      <li>Each step is an AI agent with its output feeding into the next step as context.</li>
+      <li>The pipeline page (<code>/pipeline/[id]</code>) shows each step with live status, output preview, and controls to move to the next step.</li>
+      <li>On the final step (Posting Schedule), the generated video URL and caption are pre-filled into the schedule agent.</li>
+      <li>Pipeline results are saved to <code>content_items</code> with <code>type = "pipeline"</code> and linked by <code>pipeline_id</code>.</li>
+    </ul>
+
+    <h3>Pipeline Steps</h3>
+    <div class="flow">
+      <div class="flow-step">1. Trends</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">2. Reels Script</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">3. Caption</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">4. Video</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">5. Post Now</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       AGENTS OVERVIEW
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="agents-overview"></span>
+  <div class="section">
+    <h2>Agents Overview</h2>
+    <p>All agents share a common pattern: a Pydantic request model, a FastAPI POST endpoint at <code>/api/v1/agents/{name}</code>, an agent class that calls Claude (and optionally Tavily), and a Pydantic response model. Brand context (niche, brand voice, bio, location) is injected from user settings into every agent call.</p>
+
+    <div class="card-grid">
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#dcfce7">📈</div>
+        <div class="agent-name">Trend Agent</div>
+        <div class="agent-route">POST /api/v1/agents/trends</div>
+        <div class="agent-desc">Discovers trending topics for a niche using Tavily web search, then uses Claude to rank and structure the top 5 with content ideas and hashtags.</div>
+        <div class="agent-tags"><span class="tag">Tavily</span><span class="tag">Claude</span><span class="tag">Viral Mode</span><span class="tag">Local/Global</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#fee2e2">🔍</div>
+        <div class="agent-name">Competitor Analysis</div>
+        <div class="agent-route">POST /api/v1/agents/competitor-analysis</div>
+        <div class="agent-desc">Researches a competitor brand via 3 Tavily searches (strategy, content, audience), then uses Claude to produce a full gap analysis comparing them to your brand.</div>
+        <div class="agent-tags"><span class="tag">Tavily</span><span class="tag">Claude</span><span class="tag">Gap Analysis</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#e0e7ff">✏️</div>
+        <div class="agent-name">Content Writer</div>
+        <div class="agent-route">POST /api/v1/agents/content-writer</div>
+        <div class="agent-desc">Writes full-length content in 8 formats: TikTok script, Reels script, YouTube script, tweet thread, LinkedIn post, blog post, carousel, and newsletter.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">8 Formats</span><span class="tag">AI Video Prompt</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#f3e8ff">✍️</div>
+        <div class="agent-name">Caption Agent</div>
+        <div class="agent-route">POST /api/v1/agents/caption</div>
+        <div class="agent-desc">Generates platform-optimised captions with hashtags. Supports all 6 platforms, multiple tones, brand voice injection, and emoji control.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">6 Platforms</span><span class="tag">Hashtags</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#fce7f3">🖼️</div>
+        <div class="agent-name">Image Generator</div>
+        <div class="agent-route">POST /api/v1/agents/image-generator</div>
+        <div class="agent-desc">Generates AI images from text descriptions using Fal.ai (FLUX model). Supports 6 visual styles and platform-specific dimensions.</div>
+        <div class="agent-tags"><span class="tag">Fal.ai (FLUX)</span><span class="tag">6 Styles</span><span class="tag">Platform Sizes</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#ede9fe">🎬</div>
+        <div class="agent-name">Video Creator</div>
+        <div class="agent-route">POST /api/v1/agents/video</div>
+        <div class="agent-desc">Generates short AI videos (5–10s). Claude writes the visual prompt; Fal.ai renders the video. Supports 9:16, 1:1, and 16:9 aspect ratios.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">Fal.ai</span><span class="tag">3 Ratios</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#dbeafe">🔄</div>
+        <div class="agent-name">Repurposing Agent</div>
+        <div class="agent-route">POST /api/v1/agents/repurpose</div>
+        <div class="agent-desc">Transforms content between any two platforms (e.g. LinkedIn post → TikTok script), adapting format, length, and tone while preserving brand voice.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">6 Platforms</span><span class="tag">YouTube Shorts</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#fee2e2">▶️</div>
+        <div class="agent-name">YouTube Shorts Clipper</div>
+        <div class="agent-route">POST /api/v1/agents/youtube-shorts/*</div>
+        <div class="agent-desc">Paste a YouTube URL → Claude identifies 3–5 viral moments from the transcript → generate 9:16 MP4 clips via yt-dlp + ffmpeg → download or save to content library.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">yt-dlp</span><span class="tag">ffmpeg</span><span class="tag">10-day TTL</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#fef9c3">👤</div>
+        <div class="agent-name">Persona Builder</div>
+        <div class="agent-route">POST /api/v1/agents/persona-builder</div>
+        <div class="agent-desc">Builds a detailed target audience persona from your niche, content type, and goals. Outputs demographics, psychographics, pain points, content habits, and a narrative "day in the life".</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">Persona</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#ffedd5">🗓️</div>
+        <div class="agent-name">Schedule Agent</div>
+        <div class="agent-route">POST /api/v1/agents/schedule</div>
+        <div class="agent-desc">Recommends optimal posting times per platform based on niche and audience. Supports direct "Post Now" to connected platforms with per-platform status tracking.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">Post Now</span><span class="tag">Multi-Platform</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#e0e7ff">📊</div>
+        <div class="agent-name">Analytics Agent</div>
+        <div class="agent-route">POST /api/v1/agents/analytics</div>
+        <div class="agent-desc">Analyses your content performance data and provides AI-driven strategic recommendations for improving reach, engagement, and growth.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">Insights</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#ccfbf1">🤝</div>
+        <div class="agent-name">Collab &amp; Outreach</div>
+        <div class="agent-route">POST /api/v1/agents/collab</div>
+        <div class="agent-desc">Finds collaboration partner profiles and generates personalised outreach DMs tailored to your niche, brand voice, and collaboration type.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">Outreach</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#fef9c3">🌟</div>
+        <div class="agent-name">Influencer Manager</div>
+        <div class="agent-route">POST /api/v1/agents/influencer</div>
+        <div class="agent-desc">Discovers influencer profiles that match your niche and budget, with engagement rate estimates and personalised partnership pitch templates.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">Discovery</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-icon" style="background:#fce7f3">💬</div>
+        <div class="agent-name">Comment Reply</div>
+        <div class="agent-route">POST /api/v1/agents/comment-reply</div>
+        <div class="agent-desc">Generates on-brand replies to comments. Supports multiple tones (friendly, professional, witty) and maintains brand voice consistency across all responses.</div>
+        <div class="agent-tags"><span class="tag">Claude</span><span class="tag">Brand Voice</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       AGENT DETAILS
+  ══════════════════════════════════════════ -->
+
+  <span class="section-anchor" id="agent-trend"></span>
+  <div class="section">
+    <h2>Trend Agent — In Depth</h2>
+    <p>The Trend Agent combines real-time web search with LLM analysis to surface the most actionable trending topics for a given niche.</p>
+
+    <h3>Inputs</h3>
+    <table>
+      <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+      <tr><td>niche</td><td>string</td><td>Creator's content niche (e.g. "fitness", "personal finance")</td></tr>
+      <tr><td>timeframe</td><td>24h / 7d / 30d</td><td>Search window</td></tr>
+      <tr><td>platforms</td><td>string[]</td><td>Platforms to target (default: instagram, twitter, linkedin, tiktok)</td></tr>
+      <tr><td>include_viral</td><td>boolean</td><td>If true, runs a second Tavily search for cross-niche viral moments and asks Claude to mix in 2 "viral" trends</td></tr>
+      <tr><td>location_scope</td><td>brand / global</td><td>"brand" uses the brand's saved location; "global" searches worldwide</td></tr>
+      <tr><td>brand_voice, bio, location</td><td>string</td><td>Injected from user settings for personalised results</td></tr>
+    </table>
+
+    <h3>LLM Strategy</h3>
+    <ul>
+      <li>Tavily search query: <code>trending topics {niche} content creators social media {location} {timeframe}</code></li>
+      <li>When <code>include_viral=true</code>: second search for <code>viral content social media trending {location} {timeframe} challenges memes</code></li>
+      <li>Claude is asked to return exactly 5 trends with <code>type: "niche" | "viral"</code>, scored 1–10, with content ideas specific to the creator's niche and 5 hashtags each.</li>
+    </ul>
+
+    <h3>Output</h3>
+    <ul>
+      <li>5 trend topics, each with score, platforms, 3 content ideas, 5 hashtags, and a <code>trend_type</code></li>
+      <li>Viral trends are visually distinguished with 🔥 badge and orange ring in the UI</li>
+      <li>Each trend can be saved to the content library or used to "Generate caption for this trend →"</li>
+    </ul>
+  </div>
+
+  <span class="section-anchor" id="agent-competitor"></span>
+  <div class="section">
+    <h2>Competitor Analysis — In Depth</h2>
+    <p>Researches any competitor brand and produces a structured gap analysis comparing their strategy to yours.</p>
+
+    <h3>Research Process (3 Tavily searches)</h3>
+    <ol style="padding-left:20px">
+      <li style="font-size:14px;color:#64748b;margin-bottom:6px"><strong style="color:#1e293b">General strategy:</strong> <code>{competitor} brand social media content strategy {niche}</code></li>
+      <li style="font-size:14px;color:#64748b;margin-bottom:6px"><strong style="color:#1e293b">Content &amp; platforms:</strong> <code>{competitor} {platforms} posts content type format audience</code></li>
+      <li style="font-size:14px;color:#64748b;margin-bottom:6px"><strong style="color:#1e293b">Audience &amp; positioning:</strong> <code>{competitor} target audience brand positioning {niche}</code></li>
+    </ol>
+
+    <h3>Output Sections</h3>
+    <ul>
+      <li><strong>Competitor overview</strong> — 2–3 sentence summary of who they are</li>
+      <li><strong>Their content strategy</strong> — 4 bullet points on format, tone, topics, cadence</li>
+      <li><strong>Strengths</strong> — 3 things they do well</li>
+      <li><strong>Weaknesses</strong> — 3 blind spots or gaps</li>
+      <li><strong>Content gaps</strong> — 3–5 specific gaps with priority (High/Medium/Low) and a tailored opportunity for you</li>
+      <li><strong>Your advantages</strong> — what you do or can do better</li>
+      <li><strong>Recommendations</strong> — 4 numbered actionable steps</li>
+    </ul>
+  </div>
+
+  <span class="section-anchor" id="agent-content-writer"></span>
+  <div class="section">
+    <h2>Content Writer — In Depth</h2>
+    <h3>Supported Formats</h3>
+    <table>
+      <tr><th>Format</th><th>Output</th></tr>
+      <tr><td>tiktok_script</td><td>5–8s hook + AI VIDEO PROMPT for the video creator agent</td></tr>
+      <tr><td>reels_script</td><td>Same structure as TikTok — 5–8s hook + AI VIDEO PROMPT</td></tr>
+      <tr><td>youtube_script</td><td>Full long-form video script with sections</td></tr>
+      <tr><td>tweet_thread</td><td>Numbered tweets (1/n format)</td></tr>
+      <tr><td>linkedin_post</td><td>Long-form professional post with formatting</td></tr>
+      <tr><td>blog_post</td><td>Full blog article with headings and sections</td></tr>
+      <tr><td>carousel</td><td>Slide-by-slide content (title, body per slide)</td></tr>
+      <tr><td>newsletter</td><td>Email newsletter format with sections</td></tr>
+    </table>
+    <div class="callout info">
+      <span class="icon">ℹ️</span>
+      <span>TikTok and Reels scripts include an <strong>AI VIDEO PROMPT</strong> field — a cinematic visual description extracted by the Video Creator agent via regex when generating the companion video. This ensures the video visually matches the script hook rather than being a generic scene.</span>
+    </div>
+  </div>
+
+  <span class="section-anchor" id="agent-caption"></span>
+  <div class="section">
+    <h2>Caption Agent — In Depth</h2>
+    <p>Generates platform-aware captions respecting character limits, optimal hashtag counts, and platform tone conventions.</p>
+    <h3>Platform Optimisation</h3>
+    <table>
+      <tr><th>Platform</th><th>Char Limit</th><th>Hashtags</th><th>Notes</th></tr>
+      <tr><td>Instagram</td><td>2,200</td><td>Up to 30</td><td>Emojis encouraged</td></tr>
+      <tr><td>Twitter / X</td><td>280</td><td>1–2</td><td>Concise, punchy</td></tr>
+      <tr><td>LinkedIn</td><td>3,000</td><td>3–5</td><td>Professional tone</td></tr>
+      <tr><td>TikTok</td><td>2,200</td><td>Up to 10</td><td>Casual, energetic</td></tr>
+      <tr><td>YouTube</td><td>5,000</td><td>Up to 15</td><td>SEO-focused</td></tr>
+      <tr><td>Facebook</td><td>63,206</td><td>3–5</td><td>Conversational</td></tr>
+    </table>
+  </div>
+
+  <span class="section-anchor" id="agent-image"></span>
+  <div class="section">
+    <h2>Image Generator — In Depth</h2>
+    <p>Uses <strong>Fal.ai FLUX</strong> model to generate images from text descriptions.</p>
+    <h3>Supported Styles</h3>
+    <ul>
+      <li><strong>Photorealistic</strong> — DSLR-quality photography look</li>
+      <li><strong>Digital Art</strong> — Illustrated, vibrant digital artwork</li>
+      <li><strong>Cinematic</strong> — Movie still, dramatic lighting</li>
+      <li><strong>Minimalist</strong> — Clean, simple compositions</li>
+      <li><strong>Vintage</strong> — Retro/film aesthetic</li>
+      <li><strong>Anime</strong> — Japanese animation style</li>
+    </ul>
+    <p>Claude first rewrites the user description into an optimised image generation prompt before passing it to Fal.ai, incorporating style, mood, lighting, and platform composition hints.</p>
+  </div>
+
+  <span class="section-anchor" id="agent-video"></span>
+  <div class="section">
+    <h2>Video Creator — In Depth</h2>
+    <h3>Two-Step Process</h3>
+    <ol style="padding-left:20px">
+      <li style="font-size:14px;color:#64748b;margin-bottom:8px"><strong style="color:#1e293b">Script generation (Claude)</strong> — Given a topic (or AI VIDEO PROMPT extracted from a Reels/TikTok script), Claude generates a cinematic visual description and spoken words for a single-scene short video.</li>
+      <li style="font-size:14px;color:#64748b;margin-bottom:8px"><strong style="color:#1e293b">Video rendering (Fal.ai)</strong> — The visual description is sent to Fal.ai's video model. Supported aspect ratios: 9:16 (Reels/TikTok), 1:1 (Instagram), 16:9 (YouTube). Duration: 5s or 10s.</li>
+    </ol>
+    <h3>Fallback</h3>
+    <p>If Fal.ai video generation fails, the agent falls back to generating a cover image using FLUX and returns <code>video_error</code> explaining the failure. The frontend shows the cover image with an error badge.</p>
+    <p>On success, a <strong>push notification</strong> is created (<code>notifications</code> table) with a link to <code>/content</code> so the user is alerted when the video is ready.</p>
+  </div>
+
+  <span class="section-anchor" id="agent-repurpose"></span>
+  <div class="section">
+    <h2>Repurposing Agent — In Depth</h2>
+    <p>This page has two modes toggled at the top:</p>
+    <h3>Mode 1: Repurpose Content</h3>
+    <p>Transforms content from one platform to another. The agent receives the original content, source platform, target platform, and brand context. Claude adapts format, length, tone, and platform conventions, returning the repurposed content and a list of changes made.</p>
+
+    <h3>Mode 2: YouTube Shorts Clipper</h3>
+    <div class="flow">
+      <div class="flow-step">Paste YouTube URL</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Fetch transcript</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Claude finds 3–5 viral moments</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Generate clip (yt-dlp + ffmpeg)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Save to content library</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Download</div>
+    </div>
+    <ul>
+      <li>Clips are stored in <code>backend/clips_data/</code> (persisted across server restarts)</li>
+      <li>Each clip is served via a public endpoint <code>GET /api/v1/agents/youtube-shorts/serve/{clip_id}</code> — no auth required (UUID acts as capability token)</li>
+      <li>Clips are saved to <code>content_items</code> with <code>type = "youtube_short"</code> and appear in the My Content page under the "YT Shorts" filter</li>
+      <li>Auto-cleanup: clips older than 10 days are deleted from disk and database on each new clip generation</li>
+    </ul>
+  </div>
+
+  <span class="section-anchor" id="agent-yt-shorts"></span>
+
+  <span class="section-anchor" id="agent-persona"></span>
+  <div class="section">
+    <h2>Persona Builder — In Depth</h2>
+    <p>Creates a detailed target audience persona from minimal inputs. Outputs 10 structured sections: persona name, tagline, demographics, psychographics, pain points, goals, content habits, what resonates, what to avoid, and a narrative "day in the life" paragraph. Useful for guiding content tone, topics, and format decisions.</p>
+  </div>
+
+  <span class="section-anchor" id="agent-schedule"></span>
+  <div class="section">
+    <h2>Schedule Agent — In Depth</h2>
+    <h3>Key Features</h3>
+    <ul>
+      <li><strong>Optimal time recommendations</strong> — Claude suggests the best posting times for each selected platform based on niche and audience timezone.</li>
+      <li><strong>Media detection</strong> — Automatically detects whether the content URL is a video (mp4/mov/etc.) and switches to video posting APIs.</li>
+      <li><strong>Post Now</strong> — Dispatches to Instagram, Facebook, LinkedIn, and Twitter APIs in parallel. Per-platform status chips show success/failure. The "Post Now" button stays green and disabled once all platforms are posted.</li>
+      <li><strong>Video support</strong> — Instagram (Reels via <code>media_type: REELS</code>, polls until <code>FINISHED</code>), Facebook (<code>/videos?file_url=</code>), LinkedIn (<code>feedshare-video</code> recipe).</li>
+      <li><strong>Pipeline integration</strong> — When navigated from a Pipeline step, the media URL, caption, and hashtags are pre-filled.</li>
+    </ul>
+  </div>
+
+  <span class="section-anchor" id="agent-analytics"></span>
+  <div class="section">
+    <h2>Analytics Agent — In Depth</h2>
+    <p>Aggregates performance data from connected social platforms and your content history, then uses Claude to generate strategic recommendations. Shows metrics like top-performing content types, best platforms, engagement rates, and growth trends over time.</p>
+  </div>
+
+  <span class="section-anchor" id="agent-collab"></span>
+  <div class="section">
+    <h2>Collab &amp; Outreach — In Depth</h2>
+    <p>Generates collaboration partner profiles and personalised outreach messages. Inputs: your niche, collaboration type (guest post, co-created video, shoutout, etc.), and target audience. Claude produces 3–5 ideal collaborator profiles with background context and a ready-to-send DM or email pitch.</p>
+  </div>
+
+  <span class="section-anchor" id="agent-influencer"></span>
+  <div class="section">
+    <h2>Influencer Manager — In Depth</h2>
+    <p>Discovers influencer profiles within a niche filtered by audience size tier (nano / micro / macro / mega). Claude generates detailed profiles including estimated engagement rates, content style, audience demographics, and a personalised partnership pitch for each profile.</p>
+  </div>
+
+  <span class="section-anchor" id="agent-comment"></span>
+  <div class="section">
+    <h2>Comment Reply — In Depth</h2>
+    <p>Paste a comment (or batch of comments) and get on-brand reply options. Supports tone selection (friendly, professional, witty, grateful) and injects brand voice from settings. Useful for maintaining engagement consistency at scale.</p>
+  </div>
+
+  <hr />
+
+  <!-- ══════════════════════════════════════════
+       SOCIAL POSTING
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="social-posting"></span>
+  <div class="section">
+    <h2>Social Posting System</h2>
+    <p>All platform publishing goes through <code>posting_service.py</code>. The service detects whether the media is a video (by file extension) and routes to the correct API.</p>
+
+    <table>
+      <tr><th>Platform</th><th>Text</th><th>Image</th><th>Video / Reels</th></tr>
+      <tr><td>Instagram</td><td>—</td><td><code>POST /me/media (IMAGE)</code></td><td><code>media_type: REELS</code>, polls <code>status_code == FINISHED</code></td></tr>
+      <tr><td>Facebook</td><td><code>POST /me/feed</code></td><td><code>POST /{page}/photos</code></td><td><code>POST /{page}/videos?file_url=</code></td></tr>
+      <tr><td>LinkedIn</td><td><code>POST /ugcPosts</code></td><td><code>shareMediaCategory: IMAGE</code></td><td><code>feedshare-video</code> recipe, <code>video/mp4</code></td></tr>
+      <tr><td>Twitter / X</td><td><code>POST /2/tweets</code></td><td>Media upload v1.1 then attach</td><td>—</td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       CONTENT LIBRARY
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="content-library"></span>
+  <div class="section">
+    <h2>Content Library (<code>/content</code>)</h2>
+    <p>Instagram-style grid showing all generated content items. Features:</p>
+    <ul>
+      <li><strong>Type filter tabs</strong> — All / Video / YT Shorts / Image / Written / Caption / Repurposed / Pipeline / Trend</li>
+      <li><strong>Platform filter</strong> — All / Instagram / Twitter / LinkedIn / TikTok / YouTube / Facebook</li>
+      <li><strong>Grouped by date</strong> — Today / Yesterday / {Day, Month Date, Year}</li>
+      <li><strong>Detail modal</strong> — Click any item to see full content, metadata, hashtags, and actions (Copy / Download / Delete)</li>
+      <li><strong>YouTube Shorts</strong> — Show with video preview, source URL, duration badge, and "⏳ Auto-deleted after 10 days" warning</li>
+      <li><strong>Delete</strong> — Calls <code>DELETE /api/v1/content/{id}</code>. For <code>youtube_short</code> type, also deletes the clip file from disk.</li>
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       NOTIFICATIONS
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="notifications"></span>
+  <div class="section">
+    <h2>Notifications</h2>
+    <p>Push notifications are created server-side and polled by the frontend. Currently triggered for:</p>
+    <ul>
+      <li><strong>Video ready</strong> — When the Video Creator agent successfully generates a video</li>
+    </ul>
+    <p>The notification bell in the header polls <code>GET /api/v1/notifications/</code> every 30 seconds and shows an unread count badge. Clicking a notification marks it read and navigates to the linked page.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       BRAND SETTINGS
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="brand-settings"></span>
+  <div class="section">
+    <h2>Brand Settings</h2>
+    <p>Stored per-user in the <code>settings</code> table. Injected automatically into every agent call via the <code>useSettings</code> hook. Fields:</p>
+    <table>
+      <tr><th>Field</th><th>Used By</th></tr>
+      <tr><td>niche</td><td>All agents — pre-fills the niche input and injects into LLM prompt</td></tr>
+      <tr><td>brand_voice</td><td>Caption, Content Writer, Repurpose, Trend, Collab, Comment Reply, Competitor</td></tr>
+      <tr><td>bio</td><td>Trend, Competitor, Persona Builder</td></tr>
+      <tr><td>location</td><td>Trend (location scope), Caption, Repurpose, Image Generator, Video, Competitor</td></tr>
+      <tr><td>active_platforms</td><td>Pre-selects platforms in Caption, Trend, Competitor, Schedule pages</td></tr>
+    </table>
+    <p>Multi-brand support: users can create multiple brand profiles and switch between them. The active brand is shown in the sidebar.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       API REFERENCE
+  ══════════════════════════════════════════ -->
+  <span class="section-anchor" id="api-reference"></span>
+  <div class="section">
+    <h2>API Reference</h2>
+    <p>All endpoints are prefixed <code>/api/v1/</code> and require <code>Authorization: Bearer {clerk_jwt}</code>.</p>
+
+    <h3>Agent Endpoints</h3>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/caption</span><span class="endpoint-desc">Generate platform caption + hashtags</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/repurpose</span><span class="endpoint-desc">Repurpose content across platforms</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/repurpose/save</span><span class="endpoint-desc">Save reviewed repurposed content</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/trends</span><span class="endpoint-desc">Discover trending topics</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/trends/save</span><span class="endpoint-desc">Save a selected trend</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/content-writer</span><span class="endpoint-desc">Write full content in 8 formats</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/image-generator</span><span class="endpoint-desc">Generate AI image</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/persona-builder</span><span class="endpoint-desc">Build target audience persona</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/video</span><span class="endpoint-desc">Generate AI video</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/competitor-analysis</span><span class="endpoint-desc">Analyse competitor content strategy</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/youtube-shorts/analyze</span><span class="endpoint-desc">Find viral moments in a YouTube video</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/agents/youtube-shorts/clip</span><span class="endpoint-desc">Generate and save a clip</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/agents/youtube-shorts/serve/{clip_id}</span><span class="endpoint-desc">Stream clip file (public — no auth)</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/agents/youtube-shorts/download/{clip_id}</span><span class="endpoint-desc">Download clip (legacy, auth required)</span></div>
+
+    <h3>Content Endpoints</h3>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/content/</span><span class="endpoint-desc">List content items (filters: type, platform; limit: 50)</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/content/recent</span><span class="endpoint-desc">Last N content items</span></div>
+    <div class="endpoint"><span class="method delete">DELETE</span><span class="endpoint-path">/api/v1/content/{id}</span><span class="endpoint-desc">Delete item (also removes clip file for youtube_short)</span></div>
+
+    <h3>Other Endpoints</h3>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/settings/</span><span class="endpoint-desc">Get brand settings</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/settings/</span><span class="endpoint-desc">Save brand settings</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/notifications/</span><span class="endpoint-desc">Get notifications (unread first)</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/social/post</span><span class="endpoint-desc">Post content to social platforms</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/brands/active</span><span class="endpoint-desc">Get active brand profile</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/pipeline/</span><span class="endpoint-desc">List pipelines</span></div>
+    <div class="endpoint"><span class="method post">POST</span><span class="endpoint-path">/api/v1/pipeline/</span><span class="endpoint-desc">Create pipeline</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="endpoint-path">/api/v1/pipeline/{id}</span><span class="endpoint-desc">Get pipeline detail</span></div>
+  </div>
+
+  <div style="text-align:center; padding: 40px 0; color: var(--muted); font-size: 13px;">
+    Contiq Technical Documentation · Built with Claude Code · Last updated 2026-03-27
+  </div>
+
+</main>
+
+<script>
+  // Sidebar active link highlighting
+  const links = document.querySelectorAll('#sidebar a');
+  const sections = document.querySelectorAll('.section-anchor');
+
+  function onScroll() {
+    let current = '';
+    sections.forEach(s => {
+      const top = s.getBoundingClientRect().top;
+      if (top < 120) current = s.id;
+    });
+    links.forEach(l => {
+      l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+    });
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+</script>
+
+</body>
+</html>

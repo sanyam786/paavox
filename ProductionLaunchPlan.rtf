@@ -1,0 +1,308 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2867
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;\f1\fnil\fcharset0 Menlo-Bold;}
+{\colortbl;\red255\green255\blue255;\red224\green224\blue224;\red25\green29\blue39;\red237\green237\blue237;
+\red162\green168\blue247;\red91\green131\blue165;\red55\green74\blue89;\red163\green65\blue56;\red107\green192\blue194;
+}
+{\*\expandedcolortbl;;\csgenericrgb\c87761\c87761\c87761;\csgenericrgb\c9839\c11388\c15260\c95000;\csgenericrgb\c92857\c92857\c92857;
+\cssrgb\c69412\c72549\c97647;\cssrgb\c42745\c58824\c70588;\cssrgb\c27633\c36260\c42606;\cssrgb\c70509\c33572\c28115;\cssrgb\c48472\c79501\c80571;
+}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf2 \cb3 \CocoaLigature0  
+\f1\b \cf4 Production Launch Plan
+\f0\b0 \cf2                                                                                                                                                                                   \
+                                                                                                                                                                                                          \
+  
+\f1\b \cf4 \uc0\u55357 \u56628  Critical Blockers (must fix before launch)
+\f0\b0 \cf2                                                                                                                                                            \
+                                                                                                                                                                                                          \
+  ---\
+  
+\f1\b \cf4 1. YouTube Shorts \'97 Local Filesystem Won't Work in Production
+\f0\b0 \cf2                                                                                                                                            \
+                                                               \
+  Right now clips are saved to \cf5 \cb3 backend/clips_data/\cf2 \cb3  on the local machine. On any cloud host (Vercel, Railway, Render, Fly.io), the filesystem is ephemeral \'97 files disappear on every redeploy.\
+                                                                                                                                                                                                          \
+  
+\f1\b \cf4 Options:
+\f0\b0 \cf2 \
+  - 
+\f1\b \cf4 Cloudinary
+\f0\b0 \cf2  (simplest \'97 free 25GB, video support, already has \cf5 \cb3 CLOUDINARY_*\cf2 \cb3  keys in config) \'97 upload the MP4 after yt-dlp clips it, store the Cloudinary URL instead                                    \
+  - 
+\f1\b \cf4 Cloudflare R2
+\f0\b0 \cf2  \'97 cheap (~$0.015/GB), S3-compatible, no egress fees                                                                                                                                     \
+  - 
+\f1\b \cf4 AWS S3
+\f0\b0 \cf2  \'97 industry standard, more setup                           \
+  - 
+\f1\b \cf4 Persistent volume
+\f0\b0 \cf2  on Railway/Render/Fly \'97 if you keep the backend on a single server with a mounted disk, local filesystem actually works fine in prod                                                \
+                                                                                                                                                          \
+  Recommendation: 
+\f1\b \cf4 Use Cloudinary
+\f0\b0 \cf2  (it's already half-wired in your config) or 
+\f1\b \cf4 Railway with a persistent volume
+\f0\b0 \cf2  (zero code changes needed).                                                                 \
+                                                                                                                                                                                                          \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 2. Supabase RLS is Disabled
+\f0\b0 \cf2                                                                                                                                                                              \
+                                                                                                                                                                                                          \
+  Every user can theoretically read/write every other user's data if they call the DB directly. The service role key bypasses RLS anyway from the backend, but if any key leaks, it's a problem. More\
+  importantly, it's not production-grade.                                                                                                                                                                 \
+                                                            \
+  
+\f1\b \cf4 What needs to happen:
+\f0\b0 \cf2                                                                                                                                                                                    \
+  - Re-enable RLS on \cf5 \cb3 content_items\cf2 \cb3 , \cf5 \cb3 agent_runs\cf2 \cb3 , \cf5 \cb3 notifications\cf2 \cb3 , \cf5 \cb3 connected_accounts\cf2 \cb3 \
+  - Add policies: \cf5 \cb3 USING (user_id = auth.uid())\cf2 \cb3  \'97 but since you use Clerk (not Supabase Auth), \cf5 \cb3 auth.uid()\cf2 \cb3  won't match. You have two options:                                                               \
+    - 
+\f1\b \cf4 Option A (simpler)
+\f0\b0 \cf2 : Keep RLS disabled, keep the service role key only on the backend, and rely on your API layer for access control \'97 this is acceptable if the key never touches the frontend\
+    - 
+\f1\b \cf4 Option B (proper)
+\f0\b0 \cf2 : Use JWT claims \'97 configure Supabase to trust Clerk JWTs, then \cf5 \cb3 auth.uid()\cf2 \cb3  will resolve to the Clerk user ID                                                                       \
+                                                                                                                                                                                                          \
+  Recommendation: 
+\f1\b \cf4 Option A for now
+\f0\b0 \cf2  \'97 your backend already enforces \cf5 \cb3 user_id\cf2 \cb3  on every query. Add it to the launch backlog.                                                                                  \
+                                                                                                                                                                                                          \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 3. Change \cf5 \cb3 APP_SECRET_KEY\cf4 \cb3  from Default
+\f0\b0 \cf2                                                                                                                                                                    \
+                                                            \
+  In \cf5 \cb3 config.py\cf2 \cb3 : \cf5 \cb3 APP_SECRET_KEY: str = "dev-secret-change-in-production"\cf2 \cb3  \'97 must be a random secret in prod.\
+                                                                                                                                                                                                          \
+  ---\
+  
+\f1\b \cf4 4. Update All CORS Origins
+\f0\b0 \cf2                                                                                                                                                                               \
+                                                            \
+  \cf5 \cb3 CORS_ORIGINS\cf2 \cb3  currently only allows \cf5 \cb3 http://localhost:3000\cf2 \cb3 . Production needs your actual domain: \cf5 \cb3 ["https://yourdomain.com"]\cf2 \cb3 .\
+                                                                                                                                                                                                          \
+  ---\
+  
+\f1\b \cf4 5. Switch Clerk to Production Instance
+\f0\b0 \cf2                                                                                                                                                                   \
+                                                            \
+  Clerk has separate dev and production instances. The dev instance has a \cf5 \cb3 localhost\cf2 \cb3 -only JWT issuer. You must create a Clerk production app and get new keys for \cf5 \cb3 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY\cf2 \cb3 ,\
+  \cf5 \cb3 CLERK_SECRET_KEY\cf2 \cb3 , and \cf5 \cb3 CLERK_JWT_ISSUER\cf2 \cb3 .                                                                                                                                                                 \
+   \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 \uc0\u55357 \u57313  Infrastructure Decisions
+\f0\b0 \cf2                                \
+\
+  ---\
+  
+\f1\b \cf4 6. Choose Hosting
+\f0\b0 \cf2 \
+                   \
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474      Service      \u9474         Frontend         \u9474                   Backend                  \u9474    Cost    \u9474                                                                                                   \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  
+\f1\b \cf4 Vercel + Railway
+\f0\b0 \cf2  \uc0\u9474  Vercel (Next.js native) \u9474  Railway                                   \u9474  ~$0\'9620/mo \u9474                                                                                                   \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  
+\f1\b \cf4 Vercel + Render
+\f0\b0 \cf2   \uc0\u9474  Vercel                  \u9474  Render                                    \u9474  ~$0\'967/mo  \u9474                                                                                                   \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508                                                                                                   \
+  \uc0\u9474  
+\f1\b \cf4 Vercel + Fly.io
+\f0\b0 \cf2   \uc0\u9474  Vercel                  \u9474  Fly.io (with persistent volume for clips) \u9474  ~$3\'9610/mo \u9474                                                                                                   \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508                                                                                                   \
+  \uc0\u9474  
+\f1\b \cf4 Railway (both)
+\f0\b0 \cf2    \uc0\u9474  Railway static/Next.js  \u9474  Railway                                   \u9474  ~$5\'9620/mo \u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496                                                                                                   \
+                                                            \
+  Recommendation: 
+\f1\b \cf4 Vercel (frontend) + Railway (backend)
+\f0\b0 \cf2  \'97 easiest setup, Railway supports persistent volumes for the clips directory.                                                                     \
+                                                            \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 7. Domain Name
+\f0\b0 \cf2                                             \
+                \
+  Register a domain (e.g., \cf5 \cb3 contiq.app\cf2 \cb3 , \cf5 \cb3 contiq.io\cf2 \cb3 ) \'97 $10\'9615/yr via Namecheap or Cloudflare Registrar. Point it to Vercel (frontend) and Railway (backend, e.g., \cf5 \cb3 api.contiq.app\cf2 \cb3 ).\
+                                                                                                                                                                                                          \
+  ---\
+  
+\f1\b \cf4 8. Database Index (Prevents Timeouts)
+\f0\b0 \cf2                                                                                                                                                                    \
+                                                            \
+  Run this on Supabase before launch:\
+  \cf6 \cb3 CREATE\cf2 \cb3  INDEX IF \cf6 \cb3 NOT\cf2 \cb3  \cf6 \cb3 EXISTS\cf2 \cb3  idx_content_items_user_created                                                                                                                                               \
+  \cf6 \cb3 ON\cf2 \cb3  content_items(user_id, created_at \cf6 \cb3 DESC\cf2 \cb3 );\
+                                                                                                                                                                                                          \
+  ---                                                       \
+  
+\f1\b \cf4 \uc0\u55357 \u57312  Security Hardening
+\f0\b0 \cf2                                                                                                                                                                                    \
+                                                            \
+  ---\
+  
+\f1\b \cf4 9. Rate Limiting
+\f0\b0 \cf2 \
+                  \
+  Currently zero rate limiting on any endpoint. An AI endpoint (e.g., \cf5 \cb3 /agents/trends\cf2 \cb3 ) can be called hundreds of times per minute, draining your Groq/Tavily/fal.ai quotas and running up costs.\
+                                                                                                                                                                                                          \
+  Add \cf5 \cb3 slowapi\cf2 \cb3  (FastAPI rate limiter) \'97 simple decorator-based, ~30 min to add:                                                                                                                            \
+  \cf7 \cb3 @limiter.limit(\cf8 "10/minute"\cf7 )\cf2 \cb3                                                                                                                                                                              \
+  \cf7 \cb3 @router.post(\cf8 "/trends"\cf7 )\cf2 \cb3                                                                                                                                                                                  \
+                                                                                                                                                                                                          \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 10. API Key Exposure
+\f0\b0 \cf2                                                                                                                                                                                     \
+                                                                                                                                                                                                          \
+  Verify that no API keys are committed to git. Run:        \
+  git \cf9 \cb3 log\cf2 \cb3  --all -p | grep -E \cf8 \cb3 "(GROQ|TAVILY|FAL|SUPABASE|CLERK|STRIPE)"\cf2 \cb3  | head -20                                                                                                                         \
+  Add a \cf5 \cb3 .gitignore\cf2 \cb3  check: \cf5 \cb3 backend/.env\cf2 \cb3  and \cf5 \cb3 frontend/.env.local\cf2 \cb3  must be ignored.  \
+                                                                                                                                                                                                          \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 \uc0\u55357 \u57312  Social OAuth (if enabling social posting at launch)
+\f0\b0 \cf2                                                                                                                                                   \
+                                                                                                                                                                                                          \
+  ---                                                       \
+  
+\f1\b \cf4 11. Update OAuth Redirect URIs
+\f0\b0 \cf2                                                                                                                                                                           \
+                                                            \
+  Every social platform's developer app needs the production callback URL:\
+  - e.g., \cf5 \cb3 https://api.contiq.app/api/v1/social/callback/twitter\cf2 \cb3                                                                                                                                            \
+  - Must update in: Twitter Dev Portal, Meta App Dashboard, LinkedIn Developer Portal, Google Cloud Console                                                                                               \
+                                                                                                                                                                                                          \
+  
+\f1\b \cf4 12. Facebook & Instagram App Review
+\f0\b0 \cf2                                                                                                                                                                      \
+                                                                                                                                                                                                          \
+  Meta requires app review before you can request permissions (\cf5 \cb3 pages_manage_posts\cf2 \cb3 , \cf5 \cb3 instagram_basic\cf2 \cb3 , etc.) from users outside your test users list. This takes 
+\f1\b \cf4 1\'964 weeks
+\f0\b0 \cf2 . Submit early.                    \
+                                                                                                                                                                                                          \
+  
+\f1\b \cf4 13. Twitter/X API Access
+\f0\b0 \cf2                                                                                                                                                                                 \
+                                                            \
+  The free tier of Twitter API v2 has very limited write access. You may need 
+\f1\b \cf4 Basic tier ($100/mo)
+\f0\b0 \cf2  for meaningful posting. Check your current access level.                                               \
+   \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 \uc0\u55357 \u57313  Monitoring & Reliability
+\f0\b0 \cf2                                \
+                                                                                                                                                                                                          \
+  ---\
+  
+\f1\b \cf4 14. Error Tracking \'97 Sentry
+\f0\b0 \cf2                                                                                                                                                                              \
+                                                            \
+  Currently errors just \cf5 \cb3 print()\cf2 \cb3  to console. In production you need alerts. Sentry has a generous free tier:\
+  - Frontend: \cf5 \cb3 @sentry/nextjs\cf2 \cb3                                                                                                                                                                               \
+  - Backend: \cf5 \cb3 sentry-sdk[fastapi]\cf2 \cb3 \
+  - ~2 hours to integrate                                                                                                                                                                                 \
+                                                                                                                                                                                                          \
+  
+\f1\b \cf4 15. Uptime Monitoring
+\f0\b0 \cf2 \
+                                                                                                                                                                                                          \
+  Use 
+\f1\b \cf4 Better Uptime
+\f0\b0 \cf2  (free) or 
+\f1\b \cf4 UptimeRobot
+\f0\b0 \cf2  to ping \cf5 \cb3 /health\cf2 \cb3  every 5 min and alert you if backend goes down.                                                                                                 \
+                                                                                                                                                                                                          \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 \uc0\u55357 \u57314  Legal (required before accepting users)
+\f0\b0 \cf2                 \
+                                                                                                                                                                                                          \
+  ---\
+  
+\f1\b \cf4 16. Privacy Policy
+\f0\b0 \cf2                                                                                                                                                                                       \
+                                                            \
+  Required by law (GDPR, CCPA) and by every social OAuth platform. You must disclose what data you collect (Clerk user data, connected social tokens, generated content).\
+                                                                                                                                                                                                          \
+  
+\f1\b \cf4 17. Terms of Service
+\f0\b0 \cf2 \
+                                                                                                                                                                                                          \
+  Protects you against abuse. Can use a generator (Termly, iubenda) as a starting point \'97 ~2 hours.                                                                                                       \
+   \
+  Add both as pages (\cf5 \cb3 /privacy\cf2 \cb3 , \cf5 \cb3 /terms\cf2 \cb3 ) and link from the sign-in page and footer.                                                                                                                         \
+                                                            \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 \uc0\u55357 \u56629  Pre-launch Polish (nice to have)
+\f0\b0 \cf2                        \
+                                                                                                                                                                                                          \
+  ---\
+  
+\f1\b \cf4 18. Landing Page
+\f0\b0 \cf2                                                                                                                                                                                         \
+                                                            \
+  Currently \cf5 \cb3 /\cf2 \cb3  either redirects or shows a bare page. A basic landing page explaining what Contiq does will help conversion.\
+                                                                                                                                                                                                          \
+  
+\f1\b \cf4 19. Empty States
+\f0\b0 \cf2 \
+                                                                                                                                                                                                          \
+  Verify that all agent pages and the content library show friendly empty states for brand new users.                                                                                                     \
+   \
+  
+\f1\b \cf4 20. Error Pages
+\f0\b0 \cf2                                                                                                                                                                                          \
+                                                            \
+  Add custom \cf5 \cb3 404\cf2 \cb3  and \cf5 \cb3 500\cf2 \cb3  pages in Next.js (\cf5 \cb3 app/not-found.tsx\cf2 \cb3 , \cf5 \cb3 app/error.tsx\cf2 \cb3 ).                                                                                                                             \
+   \
+  
+\f1\b \cf4 21. API Cost Controls
+\f0\b0 \cf2                                                                                                                                                                                    \
+                                                            \
+  Set budget alerts on:                                                                                                                                                                                   \
+  - Groq (free tier: check limits)                          \
+  - Tavily (free: 1,000 searches/mo \'97 hits fast in prod)                                                                                                                                                  \
+  - fal.ai ($10 free, then pay-as-you-go)               \
+                                                                                                                                                                                                          \
+  ---                                                                                                                                                                                                     \
+  
+\f1\b \cf4 Suggested Launch Order
+\f0\b0 \cf2                                                                                                                                                                                   \
+                                                                                                                                                                                                          \
+  Week 1 \'97 Infrastructure & Blockers                        \
+    \uc0\u10022  Choose hosting (Vercel + Railway recommended)                                                                                                                                                       \
+    \uc0\u10022  Register domain                                                                                                                                                                                     \
+    \uc0\u10022  Set up Clerk production instance                                                                                                                                                                    \
+    \uc0\u10022  Set all production env vars                                                                                                                                                                         \
+    \uc0\u10022  Fix clips storage (Cloudinary or Railway persistent volume)                                                                                                                                         \
+    \uc0\u10022  Run DB index migration\
+    \uc0\u10022  Update CORS + APP_SECRET_KEY                                                                                                                                                                        \
+    \uc0\u10022  Deploy and smoke test                                 \
+                                                                                                                                                                                                          \
+  Week 2 \'97 Security & Legal                                                                                                                                                                               \
+    \uc0\u10022  Add rate limiting to agent endpoints\
+    \uc0\u10022  Audit for committed secrets                                                                                                                                                                         \
+    \uc0\u10022  Write Privacy Policy + Terms of Service               \
+    \uc0\u10022  Set up Sentry                                                                                                                                                                                       \
+    \uc0\u10022  Set up uptime monitoring\
+                                                                                                                                                                                                          \
+  Week 3 \'97 Social OAuth & Polish                            \
+    \uc0\u10022  Update OAuth redirect URIs to prod domain                                                                                                                                                           \
+    \uc0\u10022  Submit Facebook/Instagram app for review              \
+    \uc0\u10022  Build landing page                                                                                                                                                                                  \
+    \uc0\u10022  Fix empty states + error pages\
+    \uc0\u10022  Set API budget alerts                                                                                                                                                                               \
+                                                                                                                                                                                                          \
+  Launch \uc0\u55357 \u56960 \
+                                                                       }

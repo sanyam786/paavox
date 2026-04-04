@@ -1,0 +1,38 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-dotenv==1.0.1
+pydantic==2.7.0
+pydantic-settings==2.2.1
+
+# Auth
+PyJWT[crypto]==2.8.0
+cryptography==42.0.5
+httpx==0.27.0
+
+# Anthropic
+anthropic==0.26.0
+
+# Database
+supabase==2.4.3
+sqlalchemy==2.0.29
+asyncpg==0.29.0
+
+# Search (for Trend Agent)
+tavily-python==0.3.3
+
+# Utils
+python-multipart==0.0.9
+fal-client==0.5.6
+
+# YouTube Shorts
+yt-dlp>=2024.4.9
+youtube-transcript-api>=0.6.2
+
+# Cloud storage (YouTube Shorts clips in production)
+cloudinary>=1.40.0
+
+# Rate limiting
+slowapi==0.1.9
+
+# Error tracking
+sentry-sdk[fastapi]==2.8.0

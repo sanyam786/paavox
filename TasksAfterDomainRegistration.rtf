@@ -1,0 +1,286 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2867
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;\f1\fnil\fcharset0 Menlo-Bold;}
+{\colortbl;\red255\green255\blue255;\red224\green224\blue224;\red25\green29\blue39;\red162\green168\blue247;
+\red237\green237\blue237;}
+{\*\expandedcolortbl;;\csgenericrgb\c87761\c87761\c87761;\csgenericrgb\c9839\c11388\c15260\c95000;\cssrgb\c69412\c72549\c97647;
+\csgenericrgb\c92857\c92857\c92857;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf2 \cb3 \CocoaLigature0 Now let's work through the domain-dependent steps. Here's what's now unblocked by having \cf4 \cb3 paavox.com\cf2 \cb3 :\
+\
+  ---\
+  
+\f1\b \cf5 Steps
+\f0\b0 \cf2  
+\f1\b \cf5 unblocked
+\f0\b0 \cf2  
+\f1\b \cf5 by
+\f0\b0 \cf2  
+\f1\b \cf5 your
+\f0\b0 \cf2  
+\f1\b \cf5 domain
+\f0\b0 \cf2 \
+\
+  
+\f1\b \cf5 \uc0\u9989 
+\f0\b0 \cf2  
+\f1\b \cf5 Step
+\f0\b0 \cf2  
+\f1\b \cf5 7
+\f0\b0 \cf2  
+\f1\b \cf5 \'97
+\f0\b0 \cf2  
+\f1\b \cf5 Domain
+\f0\b0 \cf2  
+\f1\b \cf5 \'97
+\f0\b0 \cf2  
+\f1\b \cf5 DONE
+\f0\b0 \cf2 \
+\
+  You have \cf4 \cb3 paavox.com\cf2 \cb3  and \cf4 \cb3 paavox.ai\cf2 \cb3 .\
+\
+  ---\
+  
+\f1\b \cf5 Step
+\f0\b0 \cf2  
+\f1\b \cf5 5
+\f0\b0 \cf2  
+\f1\b \cf5 \'97
+\f0\b0 \cf2  
+\f1\b \cf5 Clerk
+\f0\b0 \cf2  
+\f1\b \cf5 Production
+\f0\b0 \cf2  
+\f1\b \cf5 Instance
+\f0\b0 \cf2 \
+\
+  Do this now at https://clerk.com:\
+\
+  1. 
+\f1\b \cf5 Create
+\f0\b0 \cf2  
+\f1\b \cf5 a
+\f0\b0 \cf2  
+\f1\b \cf5 Production
+\f0\b0 \cf2  
+\f1\b \cf5 application
+\f0\b0 \cf2  \'97 top-left dropdown \uc0\u8594  "Create application" (or switch existing dev app to Production mode)\
+  2. 
+\f1\b \cf5 Add
+\f0\b0 \cf2  
+\f1\b \cf5 your
+\f0\b0 \cf2  
+\f1\b \cf5 domain
+\f0\b0 \cf2  \'97 Domains \uc0\u8594  add \cf4 \cb3 paavox.com\cf2 \cb3 \
+  3. Clerk gives you a 
+\f1\b \cf5 CNAME
+\f0\b0 \cf2  
+\f1\b \cf5 DNS
+\f0\b0 \cf2  
+\f1\b \cf5 record
+\f0\b0 \cf2  to add \'97 something like:\
+    - Name: \cf4 \cb3 clerk\cf2 \cb3  \uc0\u8594  Points to: \cf4 \cb3 frontend-api.clerk.services\cf2 \cb3 \
+    - Add this in your domain registrar (wherever you bought paavox.com \'97 Namecheap, Cloudflare, etc.)\
+  4. 
+\f1\b \cf5 Copy
+\f0\b0 \cf2  
+\f1\b \cf5 the
+\f0\b0 \cf2  
+\f1\b \cf5 production
+\f0\b0 \cf2  
+\f1\b \cf5 keys
+\f0\b0 \cf2  from API Keys section:\
+    - \cf4 \cb3 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY\cf2 \cb3  = \cf4 \cb3 pk_live_...\cf2 \cb3 \
+    - \cf4 \cb3 CLERK_SECRET_KEY\cf2 \cb3  = \cf4 \cb3 sk_live_...\cf2 \cb3 \
+    - JWT Issuer URL (looks like \cf4 \cb3 https://clerk.paavox.com\cf2 \cb3 )\
+\
+  
+\f1\b \cf5 Environment
+\f0\b0 \cf2  
+\f1\b \cf5 variables
+\f0\b0 \cf2  
+\f1\b \cf5 you'll
+\f0\b0 \cf2  
+\f1\b \cf5 set
+\f0\b0 \cf2  
+\f1\b \cf5 later
+\f0\b0 \cf2  
+\f1\b \cf5 when
+\f0\b0 \cf2  
+\f1\b \cf5 deploying:
+\f0\b0 \cf2 \
+\
+  Frontend (Vercel):\
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...\
+  CLERK_SECRET_KEY=sk_live_...\
+  NEXT_PUBLIC_API_URL=https://api.paavox.com\
+\
+  Backend (Railway):\
+  CLERK_SECRET_KEY=sk_live_...\
+  CLERK_JWT_ISSUER=https://clerk.paavox.com\
+\
+  ---\
+  
+\f1\b \cf5 Step
+\f0\b0 \cf2  
+\f1\b \cf5 6
+\f0\b0 \cf2  
+\f1\b \cf5 \'97
+\f0\b0 \cf2  
+\f1\b \cf5 Hosting
+\f0\b0 \cf2 \
+\
+  Recommended: 
+\f1\b \cf5 Vercel
+\f0\b0 \cf2  
+\f1\b \cf5 (frontend)
+\f0\b0 \cf2  
+\f1\b \cf5 +
+\f0\b0 \cf2  
+\f1\b \cf5 Railway
+\f0\b0 \cf2  
+\f1\b \cf5 (backend)
+\f0\b0 \cf2 \
+\
+  
+\f1\b \cf5 Vercel
+\f0\b0 \cf2  (frontend):\
+  1. Go to https://vercel.com \uc0\u8594  New Project \u8594  import your GitHub repo \u8594  select the \cf4 \cb3 frontend/\cf2 \cb3  folder as root\
+  2. Add domain: \cf4 \cb3 paavox.com\cf2 \cb3  \uc0\u8594  Vercel gives you DNS records to point your domain at Vercel\
+\
+  
+\f1\b \cf5 Railway
+\f0\b0 \cf2  (backend):\
+  1. Go to https://railway.app \uc0\u8594  New Project \u8594  Deploy from GitHub \u8594  select \cf4 \cb3 backend/\cf2 \cb3 \
+  2. Add a custom domain: \cf4 \cb3 api.paavox.com\cf2 \cb3  \uc0\u8594  Railway gives you a CNAME to add in your registrar\
+  3. Add all backend env vars in Railway's Variables tab\
+\
+  
+\f1\b \cf5 DNS
+\f0\b0 \cf2  
+\f1\b \cf5 records
+\f0\b0 \cf2  
+\f1\b \cf5 you'll
+\f0\b0 \cf2  
+\f1\b \cf5 need
+\f0\b0 \cf2  
+\f1\b \cf5 to
+\f0\b0 \cf2  
+\f1\b \cf5 add
+\f0\b0 \cf2  
+\f1\b \cf5 in
+\f0\b0 \cf2  
+\f1\b \cf5 your
+\f0\b0 \cf2  
+\f1\b \cf5 registrar:
+\f0\b0 \cf2 \
+\
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474  Record \u9474  Name  \u9474             Value            \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  CNAME  \u9474  \cf4 \cb3 www\cf2 \cb3    \uc0\u9474  \cf4 \cb3 cname.vercel-dns.com\cf2 \cb3         \uc0\u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  A      \u9474  \cf4 \cb3 @\cf2 \cb3      \uc0\u9474  \cf4 \cb3 76.76.21.21\cf2 \cb3  (Vercel IP)     \uc0\u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  CNAME  \u9474  \cf4 \cb3 api\cf2 \cb3    \uc0\u9474  \cf4 \cb3 your-service.railway.app\cf2 \cb3     \uc0\u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  CNAME  \u9474  \cf4 \cb3 clerk\cf2 \cb3  \uc0\u9474  \cf4 \cb3 frontend-api.clerk.services\cf2 \cb3  \uc0\u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+\
+  ---\
+  
+\f1\b \cf5 Step
+\f0\b0 \cf2  
+\f1\b \cf5 11
+\f0\b0 \cf2  
+\f1\b \cf5 \'97
+\f0\b0 \cf2  
+\f1\b \cf5 OAuth
+\f0\b0 \cf2  
+\f1\b \cf5 Redirect
+\f0\b0 \cf2  
+\f1\b \cf5 URIs
+\f0\b0 \cf2 \
+\
+  Update these in each social platform's developer portal:\
+\
+  \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+  \uc0\u9474          Platform          \u9474                       Redirect URI                      \u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Twitter/X                 \u9474  \cf4 \cb3 https://api.paavox.com/api/v1/social/callback/twitter\cf2 \cb3   \uc0\u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Meta (Facebook/Instagram) \u9474  \cf4 \cb3 https://api.paavox.com/api/v1/social/callback/facebook\cf2 \cb3  \uc0\u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  LinkedIn                  \u9474  \cf4 \cb3 https://api.paavox.com/api/v1/social/callback/linkedin\cf2 \cb3  \uc0\u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  Google (YouTube)          \u9474  \cf4 \cb3 https://api.paavox.com/api/v1/social/callback/youtube\cf2 \cb3   \uc0\u9474 \
+  \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+  \uc0\u9474  TikTok                    \u9474  \cf4 \cb3 https://api.paavox.com/api/v1/social/callback/tiktok\cf2 \cb3    \uc0\u9474 \
+  \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+\
+  ---\
+  
+\f1\b \cf5 Step
+\f0\b0 \cf2  
+\f1\b \cf5 12
+\f0\b0 \cf2  
+\f1\b \cf5 \'97
+\f0\b0 \cf2  
+\f1\b \cf5 Facebook/Instagram
+\f0\b0 \cf2  
+\f1\b \cf5 App
+\f0\b0 \cf2  
+\f1\b \cf5 Review
+\f0\b0 \cf2 \
+\
+  Start this 
+\f1\b \cf5 today
+\f0\b0 \cf2  \'97 it takes 3\'964 weeks. Go to https://developers.facebook.com \uc0\u8594  your app:\
+\
+  1. 
+\f1\b \cf5 App
+\f0\b0 \cf2  
+\f1\b \cf5 Settings
+\f0\b0 \cf2  
+\f1\b \cf5 \uc0\u8594 
+\f0\b0 \cf2  
+\f1\b \cf5 Basic
+\f0\b0 \cf2 : Fill in \cf4 \cb3 paavox.com\cf2 \cb3  as App Domains, Privacy Policy URL: \cf4 \cb3 https://paavox.com/privacy\cf2 \cb3 , Terms URL: \cf4 \cb3 https://paavox.com/terms\cf2 \cb3 \
+  2. 
+\f1\b \cf5 App
+\f0\b0 \cf2  
+\f1\b \cf5 Review
+\f0\b0 \cf2  
+\f1\b \cf5 \uc0\u8594 
+\f0\b0 \cf2  
+\f1\b \cf5 Permissions
+\f0\b0 \cf2 : Request \cf4 \cb3 pages_manage_posts\cf2 \cb3 , \cf4 \cb3 instagram_basic\cf2 \cb3 , \cf4 \cb3 instagram_content_publish\cf2 \cb3 \
+  3. Upload a 
+\f1\b \cf5 screen
+\f0\b0 \cf2  
+\f1\b \cf5 recording
+\f0\b0 \cf2  demo showing the OAuth flow in your app\
+  4. Submit \'97 Meta will review within 2\'964 weeks\
+\
+  ---\
+  
+\f1\b \cf5 Step
+\f0\b0 \cf2  
+\f1\b \cf5 15
+\f0\b0 \cf2  
+\f1\b \cf5 \'97
+\f0\b0 \cf2  
+\f1\b \cf5 Uptime
+\f0\b0 \cf2  
+\f1\b \cf5 Monitoring
+\f0\b0 \cf2  
+\f1\b \cf5 (after
+\f0\b0 \cf2  
+\f1\b \cf5 deployment)
+\f0\b0 \cf2 \
+\
+  Once Railway is up: go to https://uptimerobot.com \uc0\u8594  Add Monitor:\
+  - URL: \cf4 \cb3 https://api.paavox.com/health\cf2 \cb3 \
+  - Interval: 5 minutes\
+}
