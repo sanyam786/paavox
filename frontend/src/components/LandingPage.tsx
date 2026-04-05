@@ -131,10 +131,9 @@ export default function LandingPage() {
       <nav className="fixed top-0 inset-x-0 z-50 border-b border-white/5"
            style={{ background: 'rgba(3,7,18,0.8)', backdropFilter: 'blur(20px)' }}>
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-bold">
-              C
-            </div>
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/paavox-icon.png" alt="Paavox" className="w-8 h-8 rounded-xl" />
             <span className="font-bold text-white tracking-tight">Paavox</span>
           </div>
           <div className="flex items-center gap-3">
@@ -386,9 +385,8 @@ export default function LandingPage() {
       <footer className="border-t border-white/5 py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-[10px] font-bold text-white">
-              C
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/paavox-icon.png" alt="Paavox" className="w-5 h-5 rounded-md" />
             <span>© 2026 Paavox. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-6">

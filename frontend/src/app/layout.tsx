@@ -14,6 +14,17 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Paavox',
   description: 'AI-powered content creation, scheduling and social media management',
+  icons: {
+    icon: '/paavox-icon.png',
+    apple: '/paavox-icon.png',
+  },
+  openGraph: {
+    title: 'Paavox',
+    description: 'AI-powered content creation, scheduling and social media management',
+    url: 'https://paavox.ai',
+    siteName: 'Paavox',
+    images: [{ url: '/paavox-logo.png' }],
+  },
 };
 
 export default function RootLayout({

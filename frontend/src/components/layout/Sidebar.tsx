@@ -17,7 +17,7 @@ import {
   CalendarDays,
   Workflow,
 } from 'lucide-react';
-import PaavoxLogo from '@/components/ui/PaavoxLogo';
+import Image from 'next/image';
 import apiClient from '@/lib/apiClient';
 
 const navItems = [
@@ -84,11 +84,11 @@ export default function Sidebar() {
       )}>
         {collapsed ? (
           <button onClick={toggle} title="Expand sidebar" className="hover:opacity-80 transition-opacity">
-            <PaavoxLogo size={30} variant="bracket-spark" />
+            <Image src="/paavox-icon.png" alt="Paavox" width={30} height={30} className="rounded-xl" />
           </button>
         ) : (
           <>
-            <PaavoxLogo size={30} variant="bracket-spark" />
+            <Image src="/paavox-icon.png" alt="Paavox" width={30} height={30} className="rounded-xl" />
             <div className="flex-1 min-w-0">
               <p className="font-extrabold text-gray-900 dark:text-white whitespace-nowrap leading-tight text-[15px] tracking-tight">
                 Paavox
