@@ -14,7 +14,7 @@ SUPPORTED_PLATFORMS = ["twitter", "instagram", "linkedin", "facebook", "youtube"
 
 # Redirect URIs — backends handles the callback, then redirects to frontend
 def _redirect_uri(platform: str) -> str:
-    return f"http://localhost:8000/api/v1/social/callback/{platform}"
+    return f"{settings.BACKEND_URL}/api/v1/social/callback/{platform}"
 
 
 PLATFORM_CONFIG: dict = {
