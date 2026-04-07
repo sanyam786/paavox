@@ -252,12 +252,13 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
         raise Exception(f"Instagram carousel item {i + 1} failed after {max_attempts} attempts.")
 
     async with httpx.AsyncClient(timeout=180.0) as client:
-        # Step 1: create a media container for each image and wait for each to be FINISHED
+        # Step 1: create a media container for each image
+        # Images process in <5s — use a fixed sleep instead of polling to avoid rate limits
         child_ids: list[str] = []
         for i, url in enumerate(image_urls):
             child_id = await _create_carousel_item(client, i, url)
-            await _wait_for_container(client, child_id, f"carousel item {i + 1}", initial_wait=8, max_attempts=6, interval=8)
             child_ids.append(child_id)
+        await asyncio.sleep(8)  # let all child containers finish processing
 
         # Step 2: create carousel container referencing all child item IDs
         try:
@@ -275,8 +276,8 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
         except httpx.HTTPStatusError as e:
             raise Exception(f"Instagram carousel container error: {e.response.text}")
 
-        # Step 2b: wait for carousel container to be ready
-        await _wait_for_container(client, carousel_id, "carousel container")
+        # Step 2b: wait for carousel container — one status check after a fixed delay
+        await _wait_for_container(client, carousel_id, "carousel container", initial_wait=10, max_attempts=3, interval=10)
 
         # Step 3: publish
         try:
