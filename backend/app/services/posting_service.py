@@ -216,10 +216,10 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
         if not url or not url.startswith("http"):
             raise Exception(f"Instagram carousel requires valid public image URLs (got: {url[:60]})")
 
-    async def _wait_for_container(client, container_id: str, label: str, max_attempts: int = 20) -> None:
+    async def _wait_for_container(client, container_id: str, label: str, initial_wait: int = 10, max_attempts: int = 8, interval: int = 10) -> None:
         """Poll until container status is FINISHED. Raises on ERROR or timeout."""
+        await asyncio.sleep(initial_wait)  # let Instagram start processing before first poll
         for attempt in range(max_attempts):
-            await asyncio.sleep(5)
             r = await client.get(
                 f"https://graph.facebook.com/v18.0/{container_id}",
                 params={"fields": "status_code", "access_token": access_token},
@@ -230,7 +230,8 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
                 return
             if status == "ERROR":
                 raise Exception(f"Instagram {label} processing failed (status=ERROR).")
-        raise Exception(f"Instagram {label} not ready after {max_attempts * 5}s.")
+            await asyncio.sleep(interval)
+        raise Exception(f"Instagram {label} not ready after {initial_wait + max_attempts * interval}s.")
 
     async def _create_carousel_item(client, i: int, url: str, max_attempts: int = 3) -> str:
         """Create a single carousel item container, retrying on transient errors."""
@@ -255,7 +256,7 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
         child_ids: list[str] = []
         for i, url in enumerate(image_urls):
             child_id = await _create_carousel_item(client, i, url)
-            await _wait_for_container(client, child_id, f"carousel item {i + 1}")
+            await _wait_for_container(client, child_id, f"carousel item {i + 1}", initial_wait=8, max_attempts=6, interval=8)
             child_ids.append(child_id)
 
         # Step 2: create carousel container referencing all child item IDs
