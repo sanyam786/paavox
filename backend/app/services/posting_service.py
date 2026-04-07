@@ -216,6 +216,22 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
         if not url or not url.startswith("http"):
             raise Exception(f"Instagram carousel requires valid public image URLs (got: {url[:60]})")
 
+    async def _wait_for_container(client, container_id: str, label: str, max_attempts: int = 20) -> None:
+        """Poll until container status is FINISHED. Raises on ERROR or timeout."""
+        for attempt in range(max_attempts):
+            await asyncio.sleep(5)
+            r = await client.get(
+                f"https://graph.facebook.com/v18.0/{container_id}",
+                params={"fields": "status_code", "access_token": access_token},
+            )
+            status = r.json().get("status_code", "")
+            print(f"[Instagram] {label} status: {status} (attempt {attempt + 1})")
+            if status == "FINISHED":
+                return
+            if status == "ERROR":
+                raise Exception(f"Instagram {label} processing failed (status=ERROR).")
+        raise Exception(f"Instagram {label} not ready after {max_attempts * 5}s.")
+
     async def _create_carousel_item(client, i: int, url: str, max_attempts: int = 3) -> str:
         """Create a single carousel item container, retrying on transient errors."""
         for attempt in range(1, max_attempts + 1):
@@ -234,11 +250,12 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
             raise Exception(f"Instagram carousel item {i + 1} error: {r.text}")
         raise Exception(f"Instagram carousel item {i + 1} failed after {max_attempts} attempts.")
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        # Step 1: create a media container for each image (carousel items)
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        # Step 1: create a media container for each image and wait for each to be FINISHED
         child_ids: list[str] = []
         for i, url in enumerate(image_urls):
             child_id = await _create_carousel_item(client, i, url)
+            await _wait_for_container(client, child_id, f"carousel item {i + 1}")
             child_ids.append(child_id)
 
         # Step 2: create carousel container referencing all child item IDs
@@ -256,6 +273,9 @@ async def _post_instagram_carousel(access_token: str, ig_user_id: str, image_url
             carousel_id = r.json()["id"]
         except httpx.HTTPStatusError as e:
             raise Exception(f"Instagram carousel container error: {e.response.text}")
+
+        # Step 2b: wait for carousel container to be ready
+        await _wait_for_container(client, carousel_id, "carousel container")
 
         # Step 3: publish
         try:
