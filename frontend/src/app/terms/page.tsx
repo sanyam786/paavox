@@ -1,7 +1,11 @@
 'use client';
 
 export default function TermsOfServicePage() {
-  const html = `<div data-custom-class="body">
+  const html = `<style>
+  h1, h2, h3, h4, h5, h6 { color: #000000 !important; }
+  [data-custom-class="title"], [data-custom-class="heading_1"], [data-custom-class="heading_2"] { color: #000000 !important; }
+  [data-custom-class="body_text"], [data-custom-class="body"] { color: #595959 !important; }
+</style><div data-custom-class="body">
       <div align="center" style="text-align: left;"><div class="MsoNormal" data-custom-class="title" style="line-height: 1.5;"><bdt class="block-component"><span style="font-size: 19px;"></span></bdt><span style="font-size: 19px;"><strong><h1>TERMS OF USE</h1></strong><bdt class="else-block"></bdt></span></div><div class="MsoNormal" data-custom-class="subtitle" style="line-height: 1.5;"><strong>Last updated</strong> <bdt class="question"><strong>April 7, 2026</strong></bdt></div><div class="MsoNormal" style="line-height: 1.1;"><br></div><div style="line-height: 1.5;"><br></div><div style="line-height: 1.5;"><strong><span data-custom-class="heading_1"><h2>AGREEMENT TO OUR LEGAL TERMS</h2></span></strong></div></div><div align="center" style="text-align: left;"><div class="MsoNormal" id="agreement" style="line-height: 1.5;"><a name="_6aa3gkhykvst"></a></div></div><div align="center" style="text-align: left;"><div class="MsoNormal" data-custom-class="body_text" style="line-height: 1.5;"><span style="font-size:11.0pt;line-height:115%;font-family:Arial;
 Calibri;color:#595959;mso-themecolor:text1;mso-themetint:166;">We are <bdt class="question noTranslate" data-id="9d459c4e-c548-e5cb-7729-a118548965d2">Paavox</bdt><bdt class="block-component"></bdt> (<bdt class="block-component"></bdt>"<strong>Company</strong>," "<strong>we</strong>," "<strong>us</strong>," "<strong>our</strong>"<bdt class="statement-end-if-in-editor"></bdt>)<span style="font-size:11.0pt;line-height:115%;
 Arial;mso-fareast-font-family:Calibri;color:#595959;mso-themecolor:text1;
