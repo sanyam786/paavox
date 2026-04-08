@@ -58,7 +58,7 @@ Calibri;color:#595959;mso-themecolor:text1;mso-themetint:166;"><strong><bdt clas
         </div>`;
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 py-16 px-4">
+    <div className="min-h-screen bg-white py-16 px-4">
       <div className="max-w-3xl mx-auto">
         <div dangerouslySetInnerHTML={{ __html: html }} suppressHydrationWarning />
       </div>

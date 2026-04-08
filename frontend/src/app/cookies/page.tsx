@@ -58,7 +58,7 @@ word-break: break-word !important;
       `;
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 py-16 px-4">
+    <div className="min-h-screen bg-white py-16 px-4">
       <div className="max-w-3xl mx-auto">
         <div dangerouslySetInnerHTML={{ __html: html }} suppressHydrationWarning />
       </div>
