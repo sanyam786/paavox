@@ -90,9 +90,14 @@ export default function Sidebar() {
           <>
             <Image src="/paavox-icon.png" alt="Paavox" width={30} height={30} className="rounded-xl" />
             <div className="flex-1 min-w-0">
-              <p className="font-extrabold text-gray-900 dark:text-white whitespace-nowrap leading-tight text-[15px] tracking-tight">
-                Paavox
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="font-extrabold text-gray-900 dark:text-white whitespace-nowrap leading-tight text-[15px] tracking-tight">
+                  Paavox
+                </p>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 tracking-wide uppercase">
+                  Beta
+                </span>
+              </div>
               <p className="text-[9px] text-gray-400 dark:text-indigo-400/70 whitespace-nowrap tracking-[0.18em] uppercase font-semibold">
                 content ai
               </p>
