@@ -43,9 +43,10 @@ def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
         # Try auto-generated subs first, then manual
         files = []
         for sub_flag in ["--write-auto-subs", "--write-subs"]:
-            subprocess.run(
+            result = subprocess.run(
                 [
                     yt_dlp_bin, sub_flag, "--skip-download",
+                    "--extractor-args", "youtube:player_client=android,web",
                     "--sub-langs", "en,en-US,en-GB,en-IN",
                     "--sub-format", "vtt",
                     "-o", out_template, url,
@@ -55,6 +56,7 @@ def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
             files = glob.glob(os.path.join(tmpdir, "*.vtt"))
             if files:
                 break
+            print(f"[YTShorts] yt-dlp stderr ({sub_flag}): {result.stderr[-300:]}")
 
         if not files:
             return []
