@@ -1,34 +1,58 @@
 import asyncio
 import json
 import re
+import shutil
 import subprocess
 
 from app.core.clips_store import new_clip_path
 from app.services.agents.base import BaseAgent
 
 
+def _parse_vtt(vtt_text: str) -> list[dict]:
+    """Parse WebVTT subtitle file into transcript entries."""
+    entries = []
+    blocks = re.split(r"\n\n+", vtt_text.strip())
+    time_pattern = re.compile(r"(\d+):(\d+):(\d+\.\d+)\s+-->\s+(\d+):(\d+):(\d+\.\d+)")
+    for block in blocks:
+        lines = block.strip().splitlines()
+        time_line = next((l for l in lines if "-->" in l), None)
+        if not time_line:
+            continue
+        m = time_pattern.search(time_line)
+        if not m:
+            continue
+        h1, m1, s1, h2, m2, s2 = m.groups()
+        start = int(h1) * 3600 + int(m1) * 60 + float(s1)
+        end   = int(h2) * 3600 + int(m2) * 60 + float(s2)
+        text_lines = [l for l in lines if "-->" not in l and not l.strip().isdigit() and l.strip()]
+        text = " ".join(text_lines).strip()
+        # Strip VTT tags like <00:00:00.000><c>text</c>
+        text = re.sub(r"<[^>]+>", "", text).strip()
+        if text:
+            entries.append({"text": text, "start": start, "duration": max(0.0, end - start)})
+    return entries
+
+
 def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
-    """Fetch transcript using yt-dlp's subtitle download — works on cloud IPs."""
+    """Fetch transcript using yt-dlp subtitle download — works on cloud IPs."""
     import tempfile, os, glob
+    yt_dlp_bin = shutil.which("yt-dlp") or "yt-dlp"
     url = f"https://www.youtube.com/watch?v={video_id}"
     with tempfile.TemporaryDirectory() as tmpdir:
         out_template = os.path.join(tmpdir, "sub")
         # Try auto-generated subs first, then manual
+        files = []
         for sub_flag in ["--write-auto-subs", "--write-subs"]:
-            result = subprocess.run(
+            subprocess.run(
                 [
-                    "yt-dlp",
-                    sub_flag,
-                    "--skip-download",
+                    yt_dlp_bin, sub_flag, "--skip-download",
                     "--sub-langs", "en,en-US,en-GB,en-IN",
-                    "--sub-format", "json3",
-                    "--convert-subs", "json3",
-                    "-o", out_template,
-                    url,
+                    "--sub-format", "vtt",
+                    "-o", out_template, url,
                 ],
                 capture_output=True, text=True, timeout=60,
             )
-            files = glob.glob(os.path.join(tmpdir, "*.json3"))
+            files = glob.glob(os.path.join(tmpdir, "*.vtt"))
             if files:
                 break
 
@@ -36,23 +60,7 @@ def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
             return []
 
         with open(files[0], "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        entries = []
-        for event in data.get("events", []):
-            if "segs" not in event:
-                continue
-            text = "".join(s.get("utf8", "") for s in event["segs"]).strip()
-            if not text or text == "\n":
-                continue
-            start_ms = event.get("tStartMs", 0)
-            dur_ms = event.get("dDurationMs", 0)
-            entries.append({
-                "text": text,
-                "start": start_ms / 1000,
-                "duration": dur_ms / 1000,
-            })
-        return entries
+            return _parse_vtt(f.read())
 
 
 def _extract_video_id(url: str) -> str:
@@ -102,12 +110,13 @@ class YouTubeShortsAgent(BaseAgent):
             full_transcript = full_transcript[:10000] + "\n[transcript truncated]"
 
         # ── 3. Get video title via yt-dlp ─────────────────────────────────────
+        _yt_dlp = shutil.which("yt-dlp") or "yt-dlp"
         video_title = "YouTube Video"
         try:
             r = await loop.run_in_executor(
                 None,
                 lambda: subprocess.run(
-                    ["yt-dlp", "--print", "title", "--no-download", "--no-playlist", url],
+                    [_yt_dlp, "--print", "title", "--no-download", "--no-playlist", url],
                     capture_output=True, text=True, timeout=20,
                 ),
             )
@@ -195,12 +204,13 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         duration = end_seconds - start_seconds
 
         # ── 1. Resolve direct stream URLs ─────────────────────────────────────
+        _yt_dlp = shutil.which("yt-dlp") or "yt-dlp"
         try:
             r = await loop.run_in_executor(
                 None,
                 lambda: subprocess.run(
                     [
-                        "yt-dlp",
+                        _yt_dlp,
                         "--get-url",
                         "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
                         "--no-playlist",
