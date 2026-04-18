@@ -2,6 +2,30 @@ import json
 import httpx
 from app.core.database import get_db
 
+
+async def _refresh_google_token(user_id: str, refresh_token: str) -> str:
+    """Exchange a Google refresh token for a fresh access token and persist it."""
+    from app.core.config import settings
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "refresh_token": refresh_token,
+            },
+        )
+        if r.status_code != 200:
+            raise Exception(f"Google token refresh failed: {r.text[:300]}")
+        new_token = r.json().get("access_token", "")
+        if not new_token:
+            raise Exception("Google token refresh returned no access_token.")
+    # Persist the fresh token
+    db = get_db()
+    db.table("connected_accounts").update({"access_token": new_token}).eq("user_id", user_id).eq("platform", "youtube").execute()
+    return new_token
+
 # Platforms that support direct text posting
 TEXT_POSTING_SUPPORTED = ["twitter", "linkedin", "facebook"]
 # Platforms that require a media URL
@@ -24,7 +48,7 @@ def get_connected_account(user_id: str, platform: str) -> dict | None:
     db = get_db()
     result = (
         db.table("connected_accounts")
-        .select("access_token,platform_user_id")
+        .select("access_token,refresh_token,platform_user_id")
         .eq("user_id", user_id)
         .eq("platform", platform)
         .execute()
@@ -393,6 +417,74 @@ async def _post_facebook(page_token: str, page_id: str, content: str, image_url:
                 _raise_fb_error(r)
 
         return r.json()
+
+
+async def upload_youtube_short(
+    user_id: str,
+    video_url: str,
+    title: str,
+    description: str,
+    privacy: str = "public",
+) -> dict:
+    """Download a clip from video_url and upload it to the user's YouTube channel."""
+    account = get_connected_account(user_id, "youtube")
+    if not account:
+        raise Exception("No YouTube account connected. Connect it in Settings first.")
+
+    # Always refresh the Google token before uploading — access tokens expire in ~1 hour
+    refresh_token = account.get("refresh_token", "")
+    if not refresh_token:
+        raise Exception("No YouTube refresh token found. Please reconnect your YouTube account in Settings.")
+    access_token = await _refresh_google_token(user_id, refresh_token)
+
+    # Step 1: download the video into memory
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        dl = await client.get(video_url)
+        dl.raise_for_status()
+        video_bytes = dl.content
+
+    metadata = {
+        "snippet": {
+            "title": title[:100],
+            "description": description,
+            "categoryId": "22",  # People & Blogs
+        },
+        "status": {
+            "privacyStatus": privacy,
+            "selfDeclaredMadeForKids": False,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        # Step 2: init resumable upload session
+        init = await client.post(
+            "https://www.googleapis.com/upload/youtube/v3/videos",
+            params={"uploadType": "resumable", "part": "snippet,status"},
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                "X-Upload-Content-Type": "video/mp4",
+                "X-Upload-Content-Length": str(len(video_bytes)),
+            },
+            json=metadata,
+        )
+        if init.status_code not in (200, 201):
+            raise Exception(f"YouTube upload init failed: {init.text[:300]}")
+        upload_url = init.headers.get("Location")
+        if not upload_url:
+            raise Exception("YouTube: no upload URL returned from init.")
+
+        # Step 3: upload video bytes
+        upload = await client.put(
+            upload_url,
+            content=video_bytes,
+            headers={"Content-Type": "video/mp4"},
+        )
+        if upload.status_code not in (200, 201):
+            raise Exception(f"YouTube upload failed: {upload.text[:300]}")
+        data = upload.json()
+        video_id = data.get("id", "")
+        return {"video_id": video_id, "url": f"https://www.youtube.com/shorts/{video_id}"}
 
 
 async def post_now(user_id: str, platform: str, content: str, media_url: str | None = None) -> dict:

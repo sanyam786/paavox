@@ -248,3 +248,15 @@ class YouTubeShortsClipResponse(BaseModel):
     title: str
     duration_seconds: int
     public_url: str = ""
+
+
+class YouTubeShortsUploadRequest(BaseModel):
+    video_url: str
+    title: str
+    description: str = ""
+    privacy: str = "public"  # public | private | unlisted
+
+
+class YouTubeShortsUploadResponse(BaseModel):
+    video_id: str
+    url: str

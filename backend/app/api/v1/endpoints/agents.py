@@ -11,6 +11,7 @@ from app.schemas.agents import (
     VideoCreatorRequest, VideoCreatorResponse,
     YouTubeShortsAnalyzeRequest, YouTubeShortsAnalyzeResponse,
     YouTubeShortsClipRequest, YouTubeShortsClipResponse,
+    YouTubeShortsUploadRequest, YouTubeShortsUploadResponse,
     CompetitorAnalysisRequest, CompetitorAnalysisResponse,
 )
 from app.services.agents.caption_agent import CaptionAgent
@@ -263,6 +264,26 @@ async def serve_youtube_short(clip_id: str):
         media_type="video/mp4",
         filename=f"short_{clip_id[:8]}.mp4",
     )
+
+
+@router.post("/youtube-shorts/upload", response_model=YouTubeShortsUploadResponse)
+async def upload_youtube_short(
+    req: YouTubeShortsUploadRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Upload a generated clip to the user's YouTube channel as a Short."""
+    from app.services.posting_service import upload_youtube_short as _upload
+    try:
+        result = await _upload(
+            user_id=user_id,
+            video_url=req.video_url,
+            title=req.title,
+            description=req.description,
+            privacy=req.privacy,
+        )
+        return YouTubeShortsUploadResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/youtube-shorts/download/{clip_id}")

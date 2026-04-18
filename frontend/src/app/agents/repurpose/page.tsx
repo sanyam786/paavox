@@ -25,6 +25,9 @@ interface ClipState {
   clip_id: string | null;
   public_url: string | null;
   downloading: boolean;
+  uploading: boolean;
+  uploaded: boolean;
+  youtube_url: string | null;
   error: string;
 }
 
@@ -73,6 +76,10 @@ export default function RepurposeAgentPage() {
   const [analysis, setAnalysis]             = useState<ShortsAnalysis | null>(null);
   const [shortsError, setShortsError]       = useState('');
   const [clipStates, setClipStates]         = useState<Record<number, ClipState>>({});
+  const [uploadModal, setUploadModal]       = useState<{ idx: number; moment: ViralMoment } | null>(null);
+  const [uploadTitle, setUploadTitle]       = useState('');
+  const [uploadDesc, setUploadDesc]         = useState('');
+  const [uploadPrivacy, setUploadPrivacy]   = useState<'public' | 'private' | 'unlisted'>('public');
 
   // Pre-select source platform from active platforms in settings
   useEffect(() => {
@@ -152,7 +159,7 @@ export default function RepurposeAgentPage() {
 
   async function handleGenerateClip(moment: ViralMoment) {
     const idx = moment.index;
-    setClipStates(prev => ({ ...prev, [idx]: { generating: true, clip_id: null, public_url: null, downloading: false, error: '' } }));
+    setClipStates(prev => ({ ...prev, [idx]: { generating: true, clip_id: null, public_url: null, downloading: false, uploading: false, uploaded: false, youtube_url: null, error: '' } }));
     try {
       const { data } = await apiClient.post('/api/v1/agents/youtube-shorts/clip', {
         url: youtubeUrl,
@@ -161,9 +168,36 @@ export default function RepurposeAgentPage() {
         title: moment.title,
         crop_vertical: true,
       });
-      setClipStates(prev => ({ ...prev, [idx]: { generating: false, clip_id: data.clip_id, public_url: data.public_url || null, downloading: false, error: '' } }));
+      setClipStates(prev => ({ ...prev, [idx]: { generating: false, clip_id: data.clip_id, public_url: data.public_url || null, downloading: false, uploading: false, uploaded: false, youtube_url: null, error: '' } }));
     } catch (err: any) {
-      setClipStates(prev => ({ ...prev, [idx]: { generating: false, clip_id: null, public_url: null, downloading: false, error: err.response?.data?.detail ?? 'Generation failed.' } }));
+      setClipStates(prev => ({ ...prev, [idx]: { generating: false, clip_id: null, public_url: null, downloading: false, uploading: false, uploaded: false, youtube_url: null, error: err.response?.data?.detail ?? 'Generation failed.' } }));
+    }
+  }
+
+  function openUploadModal(idx: number, moment: ViralMoment) {
+    setUploadTitle(moment.title);
+    setUploadDesc(moment.hook);
+    setUploadPrivacy('public');
+    setUploadModal({ idx, moment });
+  }
+
+  async function handleUploadToYouTube() {
+    if (!uploadModal) return;
+    const { idx } = uploadModal;
+    const publicUrl = clipStates[idx]?.public_url;
+    if (!publicUrl) return;
+    setClipStates(prev => ({ ...prev, [idx]: { ...prev[idx], uploading: true, error: '' } }));
+    setUploadModal(null);
+    try {
+      const { data } = await apiClient.post('/api/v1/agents/youtube-shorts/upload', {
+        video_url: publicUrl,
+        title: uploadTitle,
+        description: uploadDesc,
+        privacy: uploadPrivacy,
+      });
+      setClipStates(prev => ({ ...prev, [idx]: { ...prev[idx], uploading: false, uploaded: true, youtube_url: data.url } }));
+    } catch (err: any) {
+      setClipStates(prev => ({ ...prev, [idx]: { ...prev[idx], uploading: false, error: err.response?.data?.detail ?? 'Upload failed.' } }));
     }
   }
 
@@ -509,11 +543,26 @@ export default function RepurposeAgentPage() {
 
                       {/* Actions */}
                       <div className="mt-auto pt-1 space-y-2">
-                        {hasClip && (
-                          <p className="text-xs text-center text-green-600 dark:text-green-400 font-medium">
-                            ✓ Saved to My Content
-                          </p>
+                        {/* Video preview */}
+                        {hasClip && cs?.public_url && (
+                          <video
+                            src={cs.public_url}
+                            controls
+                            className="w-full rounded-lg max-h-48 bg-black"
+                          />
                         )}
+
+                        {cs?.uploaded && cs.youtube_url && (
+                          <a
+                            href={cs.youtube_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-xs text-center text-red-500 hover:text-red-600 font-medium"
+                          >
+                            ✓ Posted to YouTube →
+                          </a>
+                        )}
+
                         {!hasClip ? (
                           <button
                             onClick={() => handleGenerateClip(moment)}
@@ -527,12 +576,27 @@ export default function RepurposeAgentPage() {
                             )}
                           </button>
                         ) : (
-                          <button
-                            onClick={() => handleDownload(moment.index, moment)}
-                            className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors"
-                          >
-                            <Download className="w-4 h-4" /> Download Short
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDownload(moment.index, moment)}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Download
+                            </button>
+                            <button
+                              onClick={() => openUploadModal(moment.index, moment)}
+                              disabled={cs?.uploading || cs?.uploaded}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-60"
+                            >
+                              {cs?.uploading ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
+                              ) : cs?.uploaded ? (
+                                <><Check className="w-3.5 h-3.5" /> Posted</>
+                              ) : (
+                                <><Youtube className="w-3.5 h-3.5" /> Post to YT</>
+                              )}
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -554,6 +618,76 @@ export default function RepurposeAgentPage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Upload to YouTube Modal ── */}
+      {uploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <Youtube className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900 dark:text-white">Post to YouTube</h2>
+                <p className="text-xs text-gray-400">Upload this Short to your YouTube channel</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={uploadTitle}
+                  onChange={e => setUploadTitle(e.target.value)}
+                  maxLength={100}
+                  className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400 bg-white dark:bg-gray-800"
+                />
+                <p className="text-xs text-gray-400 mt-1 text-right">{uploadTitle.length}/100</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Description</label>
+                <textarea
+                  value={uploadDesc}
+                  onChange={e => setUploadDesc(e.target.value)}
+                  rows={3}
+                  className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400 bg-white dark:bg-gray-800 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Privacy</label>
+                <select
+                  value={uploadPrivacy}
+                  onChange={e => setUploadPrivacy(e.target.value as 'public' | 'private' | 'unlisted')}
+                  className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400 bg-white dark:bg-gray-800"
+                >
+                  <option value="public">Public</option>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="private">Private</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setUploadModal(null)}
+                className="flex-1 btn-secondary py-2.5 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadToYouTube}
+                disabled={!uploadTitle.trim()}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-60"
+              >
+                <Youtube className="w-4 h-4" /> Upload Short
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
