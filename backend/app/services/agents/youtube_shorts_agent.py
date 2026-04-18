@@ -7,6 +7,54 @@ from app.core.clips_store import new_clip_path
 from app.services.agents.base import BaseAgent
 
 
+def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
+    """Fetch transcript using yt-dlp's subtitle download — works on cloud IPs."""
+    import tempfile, os, glob
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_template = os.path.join(tmpdir, "sub")
+        # Try auto-generated subs first, then manual
+        for sub_flag in ["--write-auto-subs", "--write-subs"]:
+            result = subprocess.run(
+                [
+                    "yt-dlp",
+                    sub_flag,
+                    "--skip-download",
+                    "--sub-langs", "en,en-US,en-GB,en-IN",
+                    "--sub-format", "json3",
+                    "--convert-subs", "json3",
+                    "-o", out_template,
+                    url,
+                ],
+                capture_output=True, text=True, timeout=60,
+            )
+            files = glob.glob(os.path.join(tmpdir, "*.json3"))
+            if files:
+                break
+
+        if not files:
+            return []
+
+        with open(files[0], "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        entries = []
+        for event in data.get("events", []):
+            if "segs" not in event:
+                continue
+            text = "".join(s.get("utf8", "") for s in event["segs"]).strip()
+            if not text or text == "\n":
+                continue
+            start_ms = event.get("tStartMs", 0)
+            dur_ms = event.get("dDurationMs", 0)
+            entries.append({
+                "text": text,
+                "start": start_ms / 1000,
+                "duration": dur_ms / 1000,
+            })
+        return entries
+
+
 def _extract_video_id(url: str) -> str:
     patterns = [
         r"youtu\.be/([A-Za-z0-9_-]{11})",
@@ -27,28 +75,14 @@ class YouTubeShortsAgent(BaseAgent):
         loop = asyncio.get_event_loop()
         video_id = _extract_video_id(url)
 
-        # ── 1. Fetch transcript ───────────────────────────────────────────────
-        try:
-            from youtube_transcript_api import YouTubeTranscriptApi
-
-            def _fetch():
-                api = YouTubeTranscriptApi()
-                return api.fetch(video_id, languages=["en", "en-US", "en-GB", "en-IN", "hi"])
-
-            transcript_list = await loop.run_in_executor(None, _fetch)
-            # Normalise: new API returns objects with .text/.start/.duration attrs
-            transcript_list = [
-                {
-                    "text": getattr(e, "text", e.get("text", "") if isinstance(e, dict) else ""),
-                    "start": float(getattr(e, "start", e.get("start", 0) if isinstance(e, dict) else 0)),
-                    "duration": float(getattr(e, "duration", e.get("duration", 0) if isinstance(e, dict) else 0)),
-                }
-                for e in transcript_list
-            ]
-        except Exception as e:
+        # ── 1. Fetch transcript via yt-dlp (handles cloud IP blocks better) ────
+        transcript_list = await loop.run_in_executor(
+            None, _fetch_transcript_ytdlp, video_id
+        )
+        if not transcript_list:
             raise ValueError(
-                f"No transcript available for this video. "
-                f"Make sure it has English captions enabled. ({e})"
+                "No transcript available for this video. "
+                "Make sure it has English captions or auto-generated subtitles enabled."
             )
 
         # ── 2. Build timestamped transcript text ──────────────────────────────
