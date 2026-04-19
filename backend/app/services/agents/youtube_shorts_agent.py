@@ -1,11 +1,31 @@
 import asyncio
 import json
+import os
 import re
 import shutil
 import subprocess
+import tempfile as _tempfile
 
 from app.core.clips_store import new_clip_path
 from app.services.agents.base import BaseAgent
+
+
+_cookies_tmp: str | None = None  # module-level cached path
+
+
+def _get_cookies_file() -> str | None:
+    """Write YOUTUBE_COOKIES env var to a temp file once; return its path."""
+    global _cookies_tmp
+    cookies_content = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if not cookies_content:
+        return None
+    if _cookies_tmp and os.path.exists(_cookies_tmp):
+        return _cookies_tmp
+    fd, path = _tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
+    with os.fdopen(fd, "w") as f:
+        f.write(cookies_content)
+    _cookies_tmp = path
+    return path
 
 
 def _parse_vtt(vtt_text: str) -> list[dict]:
@@ -42,17 +62,19 @@ def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
         out_template = os.path.join(tmpdir, "sub")
         # Try auto-generated subs first, then manual
         files = []
+        cookies_file = _get_cookies_file()
         for sub_flag in ["--write-auto-subs", "--write-subs"]:
-            result = subprocess.run(
-                [
-                    yt_dlp_bin, sub_flag, "--skip-download",
-                    "--extractor-args", "youtube:player_client=android,web",
-                    "--sub-langs", "en,en-US,en-GB,en-IN",
-                    "--sub-format", "vtt",
-                    "-o", out_template, url,
-                ],
-                capture_output=True, text=True, timeout=60,
-            )
+            cmd = [
+                yt_dlp_bin, sub_flag, "--skip-download",
+                "--extractor-args", "youtube:player_client=android,web",
+                "--sub-langs", "en,en-US,en-GB,en-IN",
+                "--sub-format", "vtt",
+                "-o", out_template,
+            ]
+            if cookies_file:
+                cmd += ["--cookies", cookies_file]
+            cmd.append(url)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             files = glob.glob(os.path.join(tmpdir, "*.vtt"))
             if files:
                 break
@@ -113,14 +135,16 @@ class YouTubeShortsAgent(BaseAgent):
 
         # ── 3. Get video title via yt-dlp ─────────────────────────────────────
         _yt_dlp = shutil.which("yt-dlp") or "yt-dlp"
+        _cookies = _get_cookies_file()
         video_title = "YouTube Video"
         try:
+            _title_cmd = [_yt_dlp, "--print", "title", "--no-download", "--no-playlist"]
+            if _cookies:
+                _title_cmd += ["--cookies", _cookies]
+            _title_cmd.append(url)
             r = await loop.run_in_executor(
                 None,
-                lambda: subprocess.run(
-                    [_yt_dlp, "--print", "title", "--no-download", "--no-playlist", url],
-                    capture_output=True, text=True, timeout=20,
-                ),
+                lambda: subprocess.run(_title_cmd, capture_output=True, text=True, timeout=20),
             )
             if r.returncode == 0 and r.stdout.strip():
                 video_title = r.stdout.strip()
@@ -207,19 +231,19 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
 
         # ── 1. Resolve direct stream URLs ─────────────────────────────────────
         _yt_dlp = shutil.which("yt-dlp") or "yt-dlp"
+        _cookies = _get_cookies_file()
+        _url_cmd = [
+            _yt_dlp, "--get-url",
+            "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--no-playlist",
+        ]
+        if _cookies:
+            _url_cmd += ["--cookies", _cookies]
+        _url_cmd.append(url)
         try:
             r = await loop.run_in_executor(
                 None,
-                lambda: subprocess.run(
-                    [
-                        _yt_dlp,
-                        "--get-url",
-                        "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                        "--no-playlist",
-                        url,
-                    ],
-                    capture_output=True, text=True, timeout=30,
-                ),
+                lambda: subprocess.run(_url_cmd, capture_output=True, text=True, timeout=30),
             )
         except Exception as e:
             raise Exception(f"yt-dlp could not resolve stream URL: {e}")
