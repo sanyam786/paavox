@@ -2,6 +2,9 @@ export const runtime = "edge";
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
+// YouTube's public InnerTube API key (embedded in YouTube's web player JS)
+const INNERTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const videoId = searchParams.get("v");
@@ -10,43 +13,62 @@ export async function GET(request: Request) {
     return Response.json({ error: "Invalid video ID" }, { status: 400 });
   }
 
-  // Fetch YouTube watch page with consent cookies so we get the full player response
-  const ytRes = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept-Language": "en-US,en;q=0.9",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      // Bypass YouTube consent/cookie wall
-      Cookie: "CONSENT=YES+cb; SOCS=CAE=",
-    },
-  });
+  // Call the InnerTube /player API — returns structured JSON with captionTracks,
+  // no HTML scraping, no consent cookies needed.
+  const playerRes = await fetch(
+    `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "X-YouTube-Client-Name": "1",
+        "X-YouTube-Client-Version": "2.20231121.08.00",
+        Origin: "https://www.youtube.com",
+        Referer: "https://www.youtube.com/",
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            hl: "en",
+            gl: "US",
+            clientName: "WEB",
+            clientVersion: "2.20231121.08.00",
+          },
+        },
+        videoId,
+      }),
+    }
+  );
 
-  if (!ytRes.ok) {
+  if (!playerRes.ok) {
     return Response.json(
-      { error: `YouTube returned HTTP ${ytRes.status}` },
+      { error: `InnerTube API returned HTTP ${playerRes.status}` },
       { status: 502 }
     );
   }
 
-  const html = await ytRes.text();
+  const playerData = await playerRes.json() as {
+    captions?: {
+      playerCaptionsTracklistRenderer?: {
+        captionTracks?: Array<{
+          languageCode: string;
+          kind?: string;
+          baseUrl: string;
+        }>;
+      };
+    };
+  };
 
-  // Extract captionTracks array from the embedded ytInitialPlayerResponse JSON
-  const match = html.match(/"captionTracks":(\[[\s\S]*?\])/);
-  if (!match) {
-    // Return a small snippet so the backend can log what the page actually was
-    const snippet = html.slice(0, 300).replace(/\n/g, " ");
+  const tracks =
+    playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+
+  if (!tracks || tracks.length === 0) {
     return Response.json(
-      { error: "No captionTracks in page", snippet },
+      { error: "No captions available for this video" },
       { status: 404 }
     );
-  }
-
-  let tracks: Array<{ languageCode: string; kind?: string; baseUrl: string }>;
-  try {
-    tracks = JSON.parse(match[1]);
-  } catch {
-    return Response.json({ error: "Failed to parse captionTracks JSON" }, { status: 500 });
   }
 
   // Prefer auto-generated English (kind=asr), fall back to manual English
@@ -57,13 +79,13 @@ export async function GET(request: Request) {
   if (!enTrack) {
     const langs = tracks.map((t) => t.languageCode).join(", ");
     return Response.json(
-      { error: `No English caption track. Available: ${langs}` },
+      { error: `No English track found. Available: ${langs}` },
       { status: 404 }
     );
   }
 
   // Fetch the VTT subtitle file
-  const vttRes = await fetch(enTrack.baseUrl + "&fmt=vtt");
+  const vttRes = await fetch(`${enTrack.baseUrl}&fmt=vtt`);
   if (!vttRes.ok) {
     return Response.json(
       { error: `Caption file returned HTTP ${vttRes.status}` },
