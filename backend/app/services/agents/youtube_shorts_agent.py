@@ -103,75 +103,63 @@ def _parse_cookies_dict(cookies_file: str) -> dict:
 
 
 async def _fetch_transcript_http(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript by scraping the YouTube watch page directly (no yt-dlp)."""
+    """Fetch transcript via Vercel edge proxy (prod) or directly (local)."""
     import httpx
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-
-    cookies: dict = {}
-    cookies_file = _get_cookies_file()
-    if cookies_file:
-        cookies = _parse_cookies_dict(cookies_file)
-
-    # Use Vercel edge proxy when available to avoid Railway IP blocks
     from app.core.config import settings as _settings
+
     frontend = _settings.FRONTEND_URL.rstrip("/")
-    if frontend and not frontend.startswith("http://localhost"):
-        page_url = f"{frontend}/api/yt-proxy?v={video_id}"
-        fetch_cookies: dict = {}  # proxy fetches without cookies (Vercel not blocked)
-    else:
-        page_url = f"https://www.youtube.com/watch?v={video_id}"
-        fetch_cookies = cookies
+    use_proxy = bool(frontend and not frontend.startswith("http://localhost"))
 
     try:
-        async with httpx.AsyncClient(
-            headers=headers, cookies=fetch_cookies,
-            follow_redirects=True, timeout=30,
-        ) as client:
-            r = await client.get(page_url)
-            if r.status_code != 200:
-                return [], f"YouTube page returned HTTP {r.status_code}"
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+            if use_proxy:
+                # Prod: Vercel edge does the full extraction and returns VTT directly
+                url = f"{frontend}/api/yt-proxy?v={video_id}"
+                r = await client.get(url)
+                if r.status_code == 404:
+                    err = r.json().get("error", "No transcript")
+                    snippet = r.json().get("snippet", "")
+                    if snippet:
+                        print(f"[YTShorts] Page snippet: {snippet}")
+                    return [], err
+                if r.status_code != 200:
+                    return [], f"Vercel proxy returned HTTP {r.status_code}: {r.text[:200]}"
+                entries = _parse_vtt(r.text)
+                print(f"[YTShorts] Vercel proxy transcript: {len(entries)} entries")
+                return entries, ""
+            else:
+                # Local: fetch YouTube directly (home IP not blocked)
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Cookie": "CONSENT=YES+cb; SOCS=CAE=",
+                }
+                r = await client.get(
+                    f"https://www.youtube.com/watch?v={video_id}&hl=en",
+                    headers=headers,
+                )
+                if r.status_code != 200:
+                    return [], f"YouTube returned HTTP {r.status_code}"
 
-            # Extract captionTracks array from the embedded JSON
-            match = re.search(r'"captionTracks":(\[[\s\S]+?\])', r.text)
-            if not match:
-                print(f"[YTShorts] No captionTracks in page (page size={len(r.text)})")
-                return [], "No captionTracks found in YouTube page"
+                match = re.search(r'"captionTracks":(\[[\s\S]+?\])', r.text)
+                if not match:
+                    return [], "No captionTracks found in YouTube page"
 
-            try:
                 tracks = json.loads(match.group(1))
-            except Exception as e:
-                return [], f"Failed to parse captionTracks JSON: {e}"
+                en_track = next(
+                    (t for t in tracks if t.get("languageCode", "").startswith("en") and t.get("kind") == "asr"),
+                    next((t for t in tracks if t.get("languageCode", "").startswith("en")), None),
+                )
+                if not en_track:
+                    return [], f"No English track. Available: {[t.get('languageCode') for t in tracks]}"
 
-            # Prefer auto-generated English, fall back to any English
-            en_track = None
-            for track in tracks:
-                lang = track.get("languageCode", "")
-                if lang.startswith("en"):
-                    en_track = track
-                    if track.get("kind") == "asr":
-                        break
+                vtt_r = await client.get(en_track["baseUrl"] + "&fmt=vtt")
+                if vtt_r.status_code != 200:
+                    return [], f"Caption file returned HTTP {vtt_r.status_code}"
 
-            if not en_track:
-                langs = [t.get("languageCode") for t in tracks]
-                return [], f"No English caption track found. Available: {langs}"
-
-            base_url = en_track["baseUrl"]
-            vtt_r = await client.get(base_url + "&fmt=vtt")
-            if vtt_r.status_code != 200:
-                return [], f"Caption file returned HTTP {vtt_r.status_code}"
-
-            entries = _parse_vtt(vtt_r.text)
-            print(f"[YTShorts] HTTP transcript: {len(entries)} entries")
-            return entries, ""
+                entries = _parse_vtt(vtt_r.text)
+                print(f"[YTShorts] Direct transcript: {len(entries)} entries")
+                return entries, ""
 
     except Exception as e:
         return [], str(e)
