@@ -109,12 +109,18 @@ async def _fetch_transcript_innertube(video_id: str, access_token: str | None = 
     """
     import httpx
 
+    # Android client natively uses Bearer token auth (same as the YouTube Android app)
+    # Unauthenticated: try multiple clients hoping one isn't blocked
     clients = (
-        [{"clientName": "WEB", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"}]
+        [
+            {"clientName": "ANDROID", "clientVersion": "19.09.37",
+             "androidSdkVersion": 30, "hl": "en", "gl": "US"},
+        ]
         if access_token else
         [
             {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
-            {"clientName": "ANDROID", "clientVersion": "19.09.37", "androidSdkVersion": 30, "hl": "en", "gl": "US"},
+            {"clientName": "ANDROID", "clientVersion": "19.09.37",
+             "androidSdkVersion": 30, "hl": "en", "gl": "US"},
             {"clientName": "WEB", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"},
         ]
     )
@@ -123,7 +129,10 @@ async def _fetch_transcript_innertube(video_id: str, access_token: str | None = 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             for ctx in clients:
-                headers: dict = {"Content-Type": "application/json"}
+                headers: dict = {
+                    "Content-Type": "application/json",
+                    "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
+                }
                 if access_token:
                     headers["Authorization"] = f"Bearer {access_token}"
 
