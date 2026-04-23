@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import re
@@ -14,17 +15,33 @@ _cookies_tmp: str | None = None  # module-level cached path
 
 
 def _get_cookies_file() -> str | None:
-    """Write YOUTUBE_COOKIES env var to a temp file once; return its path."""
+    """Write YouTube cookies env var to a temp file once; return its path.
+    Prefers YOUTUBE_COOKIES_B64 (base64-encoded, safe for multi-line env vars).
+    Falls back to YOUTUBE_COOKIES (raw Netscape format).
+    """
     global _cookies_tmp
-    cookies_content = os.environ.get("YOUTUBE_COOKIES", "").strip()
-    if not cookies_content:
-        return None
     if _cookies_tmp and os.path.exists(_cookies_tmp):
         return _cookies_tmp
+
+    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+    if b64:
+        try:
+            cookies_content = base64.b64decode(b64).decode("utf-8")
+        except Exception as e:
+            print(f"[YTShorts] Failed to decode YOUTUBE_COOKIES_B64: {e}")
+            cookies_content = ""
+    else:
+        cookies_content = os.environ.get("YOUTUBE_COOKIES", "").strip()
+
+    if not cookies_content:
+        print("[YTShorts] No YouTube cookies configured (YOUTUBE_COOKIES_B64 or YOUTUBE_COOKIES not set)")
+        return None
+
     fd, path = _tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
     with os.fdopen(fd, "w") as f:
         f.write(cookies_content)
     _cookies_tmp = path
+    print(f"[YTShorts] Cookies file written: {len(cookies_content)} chars")
     return path
 
 
