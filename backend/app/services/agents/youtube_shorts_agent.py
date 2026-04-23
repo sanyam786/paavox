@@ -102,69 +102,75 @@ def _parse_cookies_dict(cookies_file: str) -> dict:
     return cookies
 
 
-async def _fetch_transcript_http(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript via Vercel edge proxy (prod) or directly (local)."""
+async def _fetch_transcript_innertube(video_id: str, access_token: str | None = None) -> tuple[list[dict], str]:
+    """Fetch transcript via YouTube InnerTube API.
+    With a valid OAuth access_token, YouTube treats the request as a real user
+    and bypasses bot/IP detection. Falls back to unauthenticated clients for local dev.
+    """
     import httpx
-    from app.core.config import settings as _settings
 
-    frontend = _settings.FRONTEND_URL.rstrip("/")
-    use_proxy = bool(frontend and not frontend.startswith("http://localhost"))
+    clients = (
+        [{"clientName": "WEB", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"}]
+        if access_token else
+        [
+            {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
+            {"clientName": "ANDROID", "clientVersion": "19.09.37", "androidSdkVersion": 30, "hl": "en", "gl": "US"},
+            {"clientName": "WEB", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"},
+        ]
+    )
 
+    last_err = "No clients tried"
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-            if use_proxy:
-                # Prod: Vercel edge does the full extraction and returns VTT directly
-                url = f"{frontend}/api/yt-proxy?v={video_id}"
-                r = await client.get(url)
-                if r.status_code != 200:
-                    try:
-                        body = r.json()
-                        err = body.get("error", "No transcript")
-                        snippet = body.get("snippet", "")
-                        if snippet:
-                            print(f"[YTShorts] Page snippet: {snippet}")
-                    except Exception:
-                        err = f"Proxy HTTP {r.status_code}: {r.text[:300]}"
-                    return [], err
-                entries = _parse_vtt(r.text)
-                print(f"[YTShorts] Vercel proxy transcript: {len(entries)} entries")
-                return entries, ""
-            else:
-                # Local: fetch YouTube directly (home IP not blocked)
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Cookie": "CONSENT=YES+cb; SOCS=CAE=",
-                }
-                r = await client.get(
-                    f"https://www.youtube.com/watch?v={video_id}&hl=en",
+        async with httpx.AsyncClient(timeout=30) as client:
+            for ctx in clients:
+                headers: dict = {"Content-Type": "application/json"}
+                if access_token:
+                    headers["Authorization"] = f"Bearer {access_token}"
+
+                r = await client.post(
+                    "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+                    json={"videoId": video_id, "context": {"client": ctx}},
                     headers=headers,
                 )
                 if r.status_code != 200:
-                    return [], f"YouTube returned HTTP {r.status_code}"
+                    last_err = f"InnerTube HTTP {r.status_code}"
+                    continue
 
-                match = re.search(r'"captionTracks":(\[[\s\S]+?\])', r.text)
-                if not match:
-                    return [], "No captionTracks found in YouTube page"
+                data = r.json()
+                status = data.get("playabilityStatus", {}).get("status", "UNKNOWN")
+                reason = data.get("playabilityStatus", {}).get("reason", "")
+                tracks = (
+                    data.get("captions", {})
+                    .get("playerCaptionsTracklistRenderer", {})
+                    .get("captionTracks", [])
+                )
 
-                tracks = json.loads(match.group(1))
+                if not tracks:
+                    last_err = f"No captions (status={status} reason={reason} client={ctx['clientName']})"
+                    continue
+
                 en_track = next(
                     (t for t in tracks if t.get("languageCode", "").startswith("en") and t.get("kind") == "asr"),
                     next((t for t in tracks if t.get("languageCode", "").startswith("en")), None),
                 )
                 if not en_track:
-                    return [], f"No English track. Available: {[t.get('languageCode') for t in tracks]}"
+                    langs = [t.get("languageCode") for t in tracks]
+                    last_err = f"No English track. Available: {langs}"
+                    continue
 
                 vtt_r = await client.get(en_track["baseUrl"] + "&fmt=vtt")
                 if vtt_r.status_code != 200:
-                    return [], f"Caption file returned HTTP {vtt_r.status_code}"
+                    last_err = f"VTT fetch returned {vtt_r.status_code}"
+                    continue
 
                 entries = _parse_vtt(vtt_r.text)
-                print(f"[YTShorts] Direct transcript: {len(entries)} entries")
+                print(f"[YTShorts] Transcript fetched via {ctx['clientName']}: {len(entries)} entries")
                 return entries, ""
 
     except Exception as e:
         return [], str(e)
+
+    return [], last_err
 
 
 def _extract_video_id(url: str) -> str:
@@ -183,12 +189,30 @@ def _extract_video_id(url: str) -> str:
 
 class YouTubeShortsAgent(BaseAgent):
 
-    async def analyze(self, url: str) -> dict:
+    async def analyze(self, url: str, user_id: str | None = None) -> dict:
         loop = asyncio.get_event_loop()
         video_id = _extract_video_id(url)
 
-        # ── 1. Fetch transcript via direct HTTP ───────────────────────────────
-        transcript_list, err = await _fetch_transcript_http(video_id)
+        # ── 1. Get YouTube OAuth token (bypasses IP bot-detection) ────────────
+        access_token: str | None = None
+        if user_id:
+            try:
+                from app.services.posting_service import get_connected_account, _refresh_google_token
+                account = get_connected_account(user_id, "youtube")
+                if account and account.get("refresh_token"):
+                    access_token = await _refresh_google_token(user_id, account["refresh_token"])
+                    print(f"[YTShorts] Using OAuth token for transcript fetch")
+            except Exception as e:
+                print(f"[YTShorts] Could not get YouTube token: {e}")
+
+        if not access_token:
+            raise ValueError(
+                "YouTube transcript fetch requires a connected YouTube account. "
+                "Please connect your YouTube account in Settings → Connected Accounts, then try again."
+            )
+
+        # ── 2. Fetch transcript via InnerTube API ─────────────────────────────
+        transcript_list, err = await _fetch_transcript_innertube(video_id, access_token)
         if not transcript_list:
             raise ValueError(
                 f"No transcript available for this video. "
