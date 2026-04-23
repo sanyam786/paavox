@@ -85,42 +85,87 @@ def _parse_vtt(vtt_text: str) -> list[dict]:
     return entries
 
 
-def _fetch_transcript_ytdlp(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript using yt-dlp subtitle download. Returns (entries, last_stderr)."""
-    import tempfile, os, glob
-    yt_dlp_bin = _yt_dlp_bin()
+def _parse_cookies_dict(cookies_file: str) -> dict:
+    """Parse Netscape cookies.txt into a plain dict for httpx."""
+    cookies: dict = {}
+    try:
+        with open(cookies_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 7:
+                    cookies[parts[5]] = parts[6]
+    except Exception:
+        pass
+    return cookies
+
+
+async def _fetch_transcript_http(video_id: str) -> tuple[list[dict], str]:
+    """Fetch transcript by scraping the YouTube watch page directly (no yt-dlp)."""
+    import httpx
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    cookies: dict = {}
     cookies_file = _get_cookies_file()
+    if cookies_file:
+        cookies = _parse_cookies_dict(cookies_file)
+
     url = f"https://www.youtube.com/watch?v={video_id}"
-    last_stderr = ""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        out_template = os.path.join(tmpdir, "sub")
-        files = []
-        for sub_flag in ["--write-auto-subs", "--write-subs"]:
-            cmd = [
-                yt_dlp_bin, sub_flag, "--skip-download",
-                "--sub-langs", "en,en-US,en-GB,en-IN",
-                "--sub-format", "vtt",
-                "--format", "bestaudio/best",  # avoid image-only format errors
-                "-o", out_template,
-            ]
-            if cookies_file:
-                cmd += ["--cookies", cookies_file]
-            else:
-                cmd += ["--extractor-args", "youtube:player_client=android,web"]
-            cmd.append(url)
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            files = glob.glob(os.path.join(tmpdir, "*.vtt"))
-            if files:
-                break
-            last_stderr = result.stderr
-            print(f"[YTShorts] yt-dlp stderr ({sub_flag}): {result.stderr[-400:]}")
+    try:
+        async with httpx.AsyncClient(
+            headers=headers, cookies=cookies,
+            follow_redirects=True, timeout=30,
+        ) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return [], f"YouTube page returned HTTP {r.status_code}"
 
-        if not files:
-            print(f"[YTShorts] binary={yt_dlp_bin} cookies={'yes' if cookies_file else 'no'}")
-            return [], last_stderr
+            # Extract captionTracks array from the embedded JSON
+            match = re.search(r'"captionTracks":(\[[\s\S]+?\])', r.text)
+            if not match:
+                print(f"[YTShorts] No captionTracks in page (page size={len(r.text)})")
+                return [], "No captionTracks found in YouTube page"
 
-        with open(files[0], "r", encoding="utf-8") as f:
-            return _parse_vtt(f.read()), ""
+            try:
+                tracks = json.loads(match.group(1))
+            except Exception as e:
+                return [], f"Failed to parse captionTracks JSON: {e}"
+
+            # Prefer auto-generated English, fall back to any English
+            en_track = None
+            for track in tracks:
+                lang = track.get("languageCode", "")
+                if lang.startswith("en"):
+                    en_track = track
+                    if track.get("kind") == "asr":
+                        break
+
+            if not en_track:
+                langs = [t.get("languageCode") for t in tracks]
+                return [], f"No English caption track found. Available: {langs}"
+
+            base_url = en_track["baseUrl"]
+            vtt_r = await client.get(base_url + "&fmt=vtt")
+            if vtt_r.status_code != 200:
+                return [], f"Caption file returned HTTP {vtt_r.status_code}"
+
+            entries = _parse_vtt(vtt_r.text)
+            print(f"[YTShorts] HTTP transcript: {len(entries)} entries")
+            return entries, ""
+
+    except Exception as e:
+        return [], str(e)
 
 
 def _extract_video_id(url: str) -> str:
@@ -143,16 +188,20 @@ class YouTubeShortsAgent(BaseAgent):
         loop = asyncio.get_event_loop()
         video_id = _extract_video_id(url)
 
-        # ── 1. Fetch transcript via yt-dlp (handles cloud IP blocks better) ────
-        transcript_list, ytdlp_err = await loop.run_in_executor(
-            None, _fetch_transcript_ytdlp, video_id
-        )
+        # ── 1. Fetch transcript: direct HTTP first, yt-dlp as fallback ──────────
+        transcript_list, err1 = await _fetch_transcript_http(video_id)
         if not transcript_list:
-            detail = f" yt-dlp: {ytdlp_err[-200:]}" if ytdlp_err else ""
-            raise ValueError(
-                f"No transcript available for this video. "
-                f"Make sure it has English captions or auto-generated subtitles enabled.{detail}"
+            print(f"[YTShorts] HTTP method failed: {err1} — trying yt-dlp fallback")
+            transcript_list, err2 = await loop.run_in_executor(
+                None, _fetch_transcript_ytdlp, video_id
             )
+            if not transcript_list:
+                detail = err2 or err1
+                raise ValueError(
+                    f"No transcript available for this video. "
+                    f"Make sure it has English captions or auto-generated subtitles enabled. "
+                    f"({detail[-200:]})"
+                )
 
         # ── 2. Build timestamped transcript text ──────────────────────────────
         total_duration = 0.0
