@@ -291,8 +291,9 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         audio_stream = stream_urls[1] if len(stream_urls) > 1 else None
 
         # ── 2. Build ffmpeg command ───────────────────────────────────────────
+        _ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
         # Pre-input -ss = fast stream-seek (accurate enough for social clips)
-        cmd = ["ffmpeg", "-y", "-ss", str(start_seconds), "-i", video_stream]
+        cmd = [_ffmpeg, "-y", "-ss", str(start_seconds), "-i", video_stream]
 
         if audio_stream:
             cmd += ["-ss", str(start_seconds), "-i", audio_stream]
