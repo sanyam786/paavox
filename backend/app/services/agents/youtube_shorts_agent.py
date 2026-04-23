@@ -121,13 +121,22 @@ async def _fetch_transcript_http(video_id: str) -> tuple[list[dict], str]:
     if cookies_file:
         cookies = _parse_cookies_dict(cookies_file)
 
-    url = f"https://www.youtube.com/watch?v={video_id}"
+    # Use Vercel edge proxy when available to avoid Railway IP blocks
+    from app.core.config import settings as _settings
+    frontend = _settings.FRONTEND_URL.rstrip("/")
+    if frontend and not frontend.startswith("http://localhost"):
+        page_url = f"{frontend}/api/yt-proxy?v={video_id}"
+        fetch_cookies: dict = {}  # proxy fetches without cookies (Vercel not blocked)
+    else:
+        page_url = f"https://www.youtube.com/watch?v={video_id}"
+        fetch_cookies = cookies
+
     try:
         async with httpx.AsyncClient(
-            headers=headers, cookies=cookies,
+            headers=headers, cookies=fetch_cookies,
             follow_redirects=True, timeout=30,
         ) as client:
-            r = await client.get(url)
+            r = await client.get(page_url)
             if r.status_code != 200:
                 return [], f"YouTube page returned HTTP {r.status_code}"
 
