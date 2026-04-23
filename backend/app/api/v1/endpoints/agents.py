@@ -192,7 +192,7 @@ async def analyze_youtube_shorts(
     from app.services.agents.youtube_shorts_agent import YouTubeShortsAgent
     agent = YouTubeShortsAgent()
     try:
-        result = await agent.analyze(request.url, user_id=user_id)
+        result = await agent.analyze(request.url)
         return result
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

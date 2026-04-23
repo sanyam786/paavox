@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import os
 import re
@@ -11,175 +10,44 @@ from app.core.clips_store import new_clip_path
 from app.services.agents.base import BaseAgent
 
 
-_cookies_tmp: str | None = None  # module-level cached path
-
-
 def _yt_dlp_bin() -> str:
-    """Resolve yt-dlp binary path reliably across venv and system installs."""
     import sys
-    # Check PATH first
     found = shutil.which("yt-dlp")
     if found:
         return found
-    # Fall back to the same bin directory as the running Python interpreter
-    bin_dir = os.path.dirname(sys.executable)
-    candidate = os.path.join(bin_dir, "yt-dlp")
-    if os.path.isfile(candidate):
-        return candidate
-    return "yt-dlp"
+    candidate = os.path.join(os.path.dirname(sys.executable), "yt-dlp")
+    return candidate if os.path.isfile(candidate) else "yt-dlp"
 
 
-def _get_cookies_file() -> str | None:
-    """Write YouTube cookies env var to a temp file once; return its path.
-    Prefers YOUTUBE_COOKIES_B64 (base64-encoded, safe for multi-line env vars).
-    Falls back to YOUTUBE_COOKIES (raw Netscape format).
-    """
-    global _cookies_tmp
-    if _cookies_tmp and os.path.exists(_cookies_tmp):
-        return _cookies_tmp
-
-    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
-    if b64:
-        try:
-            cookies_content = base64.b64decode(b64).decode("utf-8")
-        except Exception as e:
-            print(f"[YTShorts] Failed to decode YOUTUBE_COOKIES_B64: {e}")
-            cookies_content = ""
-    else:
-        cookies_content = os.environ.get("YOUTUBE_COOKIES", "").strip()
-
-    if not cookies_content:
-        print("[YTShorts] No YouTube cookies configured (YOUTUBE_COOKIES_B64 or YOUTUBE_COOKIES not set)")
-        return None
-
-    fd, path = _tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
-    with os.fdopen(fd, "w") as f:
-        f.write(cookies_content)
-    _cookies_tmp = path
-    print(f"[YTShorts] Cookies file written: {len(cookies_content)} chars")
-    return path
-
-
-def _parse_vtt(vtt_text: str) -> list[dict]:
-    """Parse WebVTT subtitle file into transcript entries."""
-    entries = []
-    blocks = re.split(r"\n\n+", vtt_text.strip())
-    time_pattern = re.compile(r"(\d+):(\d+):(\d+\.\d+)\s+-->\s+(\d+):(\d+):(\d+\.\d+)")
-    for block in blocks:
-        lines = block.strip().splitlines()
-        time_line = next((l for l in lines if "-->" in l), None)
-        if not time_line:
-            continue
-        m = time_pattern.search(time_line)
-        if not m:
-            continue
-        h1, m1, s1, h2, m2, s2 = m.groups()
-        start = int(h1) * 3600 + int(m1) * 60 + float(s1)
-        end   = int(h2) * 3600 + int(m2) * 60 + float(s2)
-        text_lines = [l for l in lines if "-->" not in l and not l.strip().isdigit() and l.strip()]
-        text = " ".join(text_lines).strip()
-        # Strip VTT tags like <00:00:00.000><c>text</c>
-        text = re.sub(r"<[^>]+>", "", text).strip()
-        if text:
-            entries.append({"text": text, "start": start, "duration": max(0.0, end - start)})
-    return entries
-
-
-def _parse_cookies_dict(cookies_file: str) -> dict:
-    """Parse Netscape cookies.txt into a plain dict for httpx."""
-    cookies: dict = {}
-    try:
-        with open(cookies_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                parts = line.split("\t")
-                if len(parts) >= 7:
-                    cookies[parts[5]] = parts[6]
-    except Exception:
-        pass
-    return cookies
-
-
-async def _fetch_transcript_innertube(video_id: str, access_token: str | None = None) -> tuple[list[dict], str]:
-    """Fetch transcript via YouTube InnerTube API.
-    With a valid OAuth access_token, YouTube treats the request as a real user
-    and bypasses bot/IP detection. Falls back to unauthenticated clients for local dev.
-    """
-    import httpx
-
-    # Android client natively uses Bearer token auth (same as the YouTube Android app)
-    # Unauthenticated: try multiple clients hoping one isn't blocked
-    clients = (
-        [
-            {"clientName": "ANDROID", "clientVersion": "19.09.37",
-             "androidSdkVersion": 30, "hl": "en", "gl": "US"},
-        ]
-        if access_token else
-        [
-            {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
-            {"clientName": "ANDROID", "clientVersion": "19.09.37",
-             "androidSdkVersion": 30, "hl": "en", "gl": "US"},
-            {"clientName": "WEB", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"},
-        ]
+def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
+    """Fetch transcript via youtube-transcript-api, using YOUTUBE_PROXY if set."""
+    from youtube_transcript_api import (
+        YouTubeTranscriptApi,
+        NoTranscriptFound,
+        TranscriptsDisabled,
     )
 
-    last_err = "No clients tried"
+    proxy = os.environ.get("YOUTUBE_PROXY", "").strip()
+    proxies = {"https": proxy, "http": proxy} if proxy else None
+
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            for ctx in clients:
-                headers: dict = {
-                    "Content-Type": "application/json",
-                    "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
-                }
-                if access_token:
-                    headers["Authorization"] = f"Bearer {access_token}"
-
-                r = await client.post(
-                    "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
-                    json={"videoId": video_id, "context": {"client": ctx}},
-                    headers=headers,
-                )
-                if r.status_code != 200:
-                    last_err = f"InnerTube HTTP {r.status_code}"
-                    continue
-
-                data = r.json()
-                status = data.get("playabilityStatus", {}).get("status", "UNKNOWN")
-                reason = data.get("playabilityStatus", {}).get("reason", "")
-                tracks = (
-                    data.get("captions", {})
-                    .get("playerCaptionsTracklistRenderer", {})
-                    .get("captionTracks", [])
-                )
-
-                if not tracks:
-                    last_err = f"No captions (status={status} reason={reason} client={ctx['clientName']})"
-                    continue
-
-                en_track = next(
-                    (t for t in tracks if t.get("languageCode", "").startswith("en") and t.get("kind") == "asr"),
-                    next((t for t in tracks if t.get("languageCode", "").startswith("en")), None),
-                )
-                if not en_track:
-                    langs = [t.get("languageCode") for t in tracks]
-                    last_err = f"No English track. Available: {langs}"
-                    continue
-
-                vtt_r = await client.get(en_track["baseUrl"] + "&fmt=vtt")
-                if vtt_r.status_code != 200:
-                    last_err = f"VTT fetch returned {vtt_r.status_code}"
-                    continue
-
-                entries = _parse_vtt(vtt_r.text)
-                print(f"[YTShorts] Transcript fetched via {ctx['clientName']}: {len(entries)} entries")
-                return entries, ""
-
+        raw = YouTubeTranscriptApi.get_transcript(
+            video_id,
+            languages=["en", "en-US", "en-GB", "en-IN"],
+            proxies=proxies,
+        )
+        entries = [
+            {"text": e["text"], "start": e["start"], "duration": e["duration"]}
+            for e in raw
+        ]
+        print(f"[YTShorts] Transcript: {len(entries)} entries (proxy={'yes' if proxy else 'no'})")
+        return entries, ""
+    except TranscriptsDisabled:
+        return [], "Captions are disabled for this video"
+    except NoTranscriptFound:
+        return [], "No English transcript found for this video"
     except Exception as e:
         return [], str(e)
-
-    return [], last_err
 
 
 def _extract_video_id(url: str) -> str:
@@ -202,31 +70,24 @@ class YouTubeShortsAgent(BaseAgent):
         loop = asyncio.get_event_loop()
         video_id = _extract_video_id(url)
 
-        # ── 1. Get YouTube OAuth token (bypasses IP bot-detection) ────────────
-        access_token: str | None = None
-        if user_id:
-            try:
-                from app.services.posting_service import get_connected_account, _refresh_google_token
-                account = get_connected_account(user_id, "youtube")
-                if account and account.get("refresh_token"):
-                    access_token = await _refresh_google_token(user_id, account["refresh_token"])
-                    print(f"[YTShorts] Using OAuth token for transcript fetch")
-            except Exception as e:
-                print(f"[YTShorts] Could not get YouTube token: {e}")
-
-        if not access_token:
-            raise ValueError(
-                "YouTube transcript fetch requires a connected YouTube account. "
-                "Please connect your YouTube account in Settings → Connected Accounts, then try again."
-            )
-
-        # ── 2. Fetch transcript via InnerTube API ─────────────────────────────
-        transcript_list, err = await _fetch_transcript_innertube(video_id, access_token)
+        # ── 1. Fetch transcript ───────────────────────────────────────────────
+        transcript_list, err = await loop.run_in_executor(
+            None, _fetch_transcript, video_id
+        )
         if not transcript_list:
+            proxy_set = bool(os.environ.get("YOUTUBE_PROXY", "").strip())
+            hint = (
+                f" ({err})"
+                if proxy_set
+                else (
+                    f" ({err}) — On production servers YouTube blocks direct requests. "
+                    "Set the YOUTUBE_PROXY environment variable to a residential proxy "
+                    "(e.g. free tier at webshare.io) to fix this."
+                )
+            )
             raise ValueError(
                 f"No transcript available for this video. "
-                f"Make sure it has English captions or auto-generated subtitles enabled. "
-                f"({err[-200:]})"
+                f"Make sure it has English captions or auto-generated subtitles enabled.{hint}"
             )
 
         # ── 2. Build timestamped transcript text ──────────────────────────────
@@ -246,17 +107,15 @@ class YouTubeShortsAgent(BaseAgent):
             full_transcript = full_transcript[:10000] + "\n[transcript truncated]"
 
         # ── 3. Get video title via yt-dlp ─────────────────────────────────────
-        _yt_dlp = _yt_dlp_bin()
-        _cookies = _get_cookies_file()
         video_title = "YouTube Video"
         try:
-            _title_cmd = [_yt_dlp, "--print", "title", "--no-download", "--no-playlist"]
-            if _cookies:
-                _title_cmd += ["--cookies", _cookies]
-            _title_cmd.append(url)
+            _yt_dlp = _yt_dlp_bin()
             r = await loop.run_in_executor(
                 None,
-                lambda: subprocess.run(_title_cmd, capture_output=True, text=True, timeout=20),
+                lambda: subprocess.run(
+                    [_yt_dlp, "--print", "title", "--no-download", "--no-playlist", url],
+                    capture_output=True, text=True, timeout=20,
+                ),
             )
             if r.returncode == 0 and r.stdout.strip():
                 video_title = r.stdout.strip()
@@ -287,7 +146,7 @@ Rules:
 - Use the integer second values from the transcript (the number after the /)
 - Each clip must make sense without watching the rest of the video"""
 
-        user = f"""Video: "{video_title}"
+        user_prompt = f"""Video: "{video_title}"
 Total duration: {int(total_duration // 60)}:{int(total_duration % 60):02d}
 
 Transcript (format: [MM:SS / Nseconds] text):
@@ -295,7 +154,7 @@ Transcript (format: [MM:SS / Nseconds] text):
 
 Find the 3-5 best moments to clip as YouTube Shorts."""
 
-        raw = self._chat(system, user, max_tokens=1500)
+        raw = self._chat(system, user_prompt, max_tokens=1500)
 
         try:
             json_match = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -307,7 +166,6 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         for i, m in enumerate(data.get("moments", [])[:5]):
             start = int(float(m.get("start_seconds", 0)))
             end   = int(float(m.get("end_seconds", start + 45)))
-            # Clamp duration to 15–60 s
             if end - start < 15:
                 end = start + 30
             if end - start > 60:
@@ -336,14 +194,13 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         title: str,
         crop_vertical: bool = True,
     ) -> str:
-        """Download a clip segment via yt-dlp, crop with ffmpeg. Returns clip_id."""
+        """Download clip via yt-dlp --download-sections, encode with ffmpeg."""
         import tempfile as _tf
         loop = asyncio.get_event_loop()
         clip_id, output_path = new_clip_path("mp4")
         duration = end_seconds - start_seconds
         _ytdlp = _yt_dlp_bin()
         _ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
-        _cookies = _get_cookies_file()
 
         def _ts(secs: int) -> str:
             h, r = divmod(secs, 3600)
@@ -361,10 +218,8 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
                 "--merge-output-format", "mp4",
                 "--no-playlist",
                 "-o", raw_path,
+                url,
             ]
-            if _cookies:
-                dl_cmd += ["--cookies", _cookies]
-            dl_cmd.append(url)
 
             try:
                 dl_result = await loop.run_in_executor(
@@ -380,7 +235,7 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
                 detail = dl_result.stderr[-400:] if dl_result.stderr else "unknown error"
                 raise Exception(f"yt-dlp download failed: {detail}")
 
-            # ── 2. Encode / crop with ffmpeg from local file ──────────────────
+            # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
             ff_cmd = [_ffmpeg, "-y", "-i", raw_path, "-t", str(duration)]
             ff_cmd += [
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
