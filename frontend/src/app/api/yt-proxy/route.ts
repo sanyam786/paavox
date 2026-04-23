@@ -2,8 +2,39 @@ export const runtime = "edge";
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
-// YouTube's public InnerTube API key (embedded in YouTube's web player JS)
-const INNERTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+type CaptionTrack = {
+  languageCode: string;
+  kind?: string;
+  baseUrl: string;
+};
+
+type PlayerResponse = {
+  playabilityStatus?: { status: string; reason?: string };
+  captions?: {
+    playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] };
+  };
+};
+
+async function callInnerTube(videoId: string, client: object): Promise<PlayerResponse> {
+  const res = await fetch(
+    "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId, context: { client } }),
+    }
+  );
+  if (!res.ok) return {};
+  return res.json();
+}
+
+// Clients in priority order — ANDROID_TESTSUITE works server-side without auth
+const CLIENTS = [
+  { clientName: "ANDROID_TESTSUITE", clientVersion: "1.9", hl: "en", gl: "US" },
+  { clientName: "ANDROID", clientVersion: "19.09.37", androidSdkVersion: 30, hl: "en", gl: "US" },
+  { clientName: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", clientVersion: "2.0", hl: "en", gl: "US" },
+  { clientName: "WEB", clientVersion: "2.20231121.08.00", hl: "en", gl: "US" },
+];
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,60 +44,21 @@ export async function GET(request: Request) {
     return Response.json({ error: "Invalid video ID" }, { status: 400 });
   }
 
-  // Call the InnerTube /player API — returns structured JSON with captionTracks,
-  // no HTML scraping, no consent cookies needed.
-  const playerRes = await fetch(
-    `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "X-YouTube-Client-Name": "1",
-        "X-YouTube-Client-Version": "2.20231121.08.00",
-        Origin: "https://www.youtube.com",
-        Referer: "https://www.youtube.com/",
-      },
-      body: JSON.stringify({
-        context: {
-          client: {
-            hl: "en",
-            gl: "US",
-            clientName: "WEB",
-            clientVersion: "2.20231121.08.00",
-          },
-        },
-        videoId,
-      }),
-    }
-  );
+  let tracks: CaptionTrack[] | undefined;
+  let lastStatus = "UNKNOWN";
+  let lastReason = "";
 
-  if (!playerRes.ok) {
-    return Response.json(
-      { error: `InnerTube API returned HTTP ${playerRes.status}` },
-      { status: 502 }
-    );
+  for (const client of CLIENTS) {
+    const data = await callInnerTube(videoId, client);
+    lastStatus = data.playabilityStatus?.status ?? "UNKNOWN";
+    lastReason = data.playabilityStatus?.reason ?? "";
+    tracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (tracks && tracks.length > 0) break;
   }
-
-  const playerData = await playerRes.json() as {
-    captions?: {
-      playerCaptionsTracklistRenderer?: {
-        captionTracks?: Array<{
-          languageCode: string;
-          kind?: string;
-          baseUrl: string;
-        }>;
-      };
-    };
-  };
-
-  const tracks =
-    playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
 
   if (!tracks || tracks.length === 0) {
     return Response.json(
-      { error: "No captions available for this video" },
+      { error: `No captions available. status=${lastStatus} reason=${lastReason}` },
       { status: 404 }
     );
   }
@@ -79,12 +71,11 @@ export async function GET(request: Request) {
   if (!enTrack) {
     const langs = tracks.map((t) => t.languageCode).join(", ");
     return Response.json(
-      { error: `No English track found. Available: ${langs}` },
+      { error: `No English track. Available: ${langs}` },
       { status: 404 }
     );
   }
 
-  // Fetch the VTT subtitle file
   const vttRes = await fetch(`${enTrack.baseUrl}&fmt=vtt`);
   if (!vttRes.ok) {
     return Response.json(
