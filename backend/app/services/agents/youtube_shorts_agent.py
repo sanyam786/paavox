@@ -98,13 +98,15 @@ def _fetch_transcript_ytdlp(video_id: str) -> tuple[list[dict], str]:
         for sub_flag in ["--write-auto-subs", "--write-subs"]:
             cmd = [
                 yt_dlp_bin, sub_flag, "--skip-download",
-                "--extractor-args", "youtube:player_client=android,web",
                 "--sub-langs", "en,en-US,en-GB,en-IN",
                 "--sub-format", "vtt",
                 "-o", out_template,
             ]
             if cookies_file:
                 cmd += ["--cookies", cookies_file]
+            else:
+                # No cookies: try android client to bypass IP restrictions
+                cmd += ["--extractor-args", "youtube:player_client=android,web"]
             cmd.append(url)
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             files = glob.glob(os.path.join(tmpdir, "*.vtt"))
