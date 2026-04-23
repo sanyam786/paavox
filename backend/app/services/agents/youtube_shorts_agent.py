@@ -116,14 +116,16 @@ async def _fetch_transcript_http(video_id: str) -> tuple[list[dict], str]:
                 # Prod: Vercel edge does the full extraction and returns VTT directly
                 url = f"{frontend}/api/yt-proxy?v={video_id}"
                 r = await client.get(url)
-                if r.status_code == 404:
-                    err = r.json().get("error", "No transcript")
-                    snippet = r.json().get("snippet", "")
-                    if snippet:
-                        print(f"[YTShorts] Page snippet: {snippet}")
-                    return [], err
                 if r.status_code != 200:
-                    return [], f"Vercel proxy returned HTTP {r.status_code}: {r.text[:200]}"
+                    try:
+                        body = r.json()
+                        err = body.get("error", "No transcript")
+                        snippet = body.get("snippet", "")
+                        if snippet:
+                            print(f"[YTShorts] Page snippet: {snippet}")
+                    except Exception:
+                        err = f"Proxy HTTP {r.status_code}: {r.text[:300]}"
+                    return [], err
                 entries = _parse_vtt(r.text)
                 print(f"[YTShorts] Vercel proxy transcript: {len(entries)} entries")
                 return entries, ""
