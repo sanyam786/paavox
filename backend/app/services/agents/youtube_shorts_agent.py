@@ -85,16 +85,16 @@ def _parse_vtt(vtt_text: str) -> list[dict]:
     return entries
 
 
-def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
-    """Fetch transcript using yt-dlp subtitle download — works on cloud IPs."""
+def _fetch_transcript_ytdlp(video_id: str) -> tuple[list[dict], str]:
+    """Fetch transcript using yt-dlp subtitle download. Returns (entries, last_stderr)."""
     import tempfile, os, glob
     yt_dlp_bin = _yt_dlp_bin()
+    cookies_file = _get_cookies_file()
     url = f"https://www.youtube.com/watch?v={video_id}"
+    last_stderr = ""
     with tempfile.TemporaryDirectory() as tmpdir:
         out_template = os.path.join(tmpdir, "sub")
-        # Try auto-generated subs first, then manual
         files = []
-        cookies_file = _get_cookies_file()
         for sub_flag in ["--write-auto-subs", "--write-subs"]:
             cmd = [
                 yt_dlp_bin, sub_flag, "--skip-download",
@@ -110,13 +110,15 @@ def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
             files = glob.glob(os.path.join(tmpdir, "*.vtt"))
             if files:
                 break
-            print(f"[YTShorts] yt-dlp stderr ({sub_flag}): {result.stderr[-300:]}")
+            last_stderr = result.stderr
+            print(f"[YTShorts] yt-dlp stderr ({sub_flag}): {result.stderr[-400:]}")
 
         if not files:
-            return []
+            print(f"[YTShorts] binary={yt_dlp_bin} cookies={'yes' if cookies_file else 'no'}")
+            return [], last_stderr
 
         with open(files[0], "r", encoding="utf-8") as f:
-            return _parse_vtt(f.read())
+            return _parse_vtt(f.read()), ""
 
 
 def _extract_video_id(url: str) -> str:
@@ -140,13 +142,14 @@ class YouTubeShortsAgent(BaseAgent):
         video_id = _extract_video_id(url)
 
         # ── 1. Fetch transcript via yt-dlp (handles cloud IP blocks better) ────
-        transcript_list = await loop.run_in_executor(
+        transcript_list, ytdlp_err = await loop.run_in_executor(
             None, _fetch_transcript_ytdlp, video_id
         )
         if not transcript_list:
+            detail = f" yt-dlp: {ytdlp_err[-200:]}" if ytdlp_err else ""
             raise ValueError(
-                "No transcript available for this video. "
-                "Make sure it has English captions or auto-generated subtitles enabled."
+                f"No transcript available for this video. "
+                f"Make sure it has English captions or auto-generated subtitles enabled.{detail}"
             )
 
         # ── 2. Build timestamped transcript text ──────────────────────────────
