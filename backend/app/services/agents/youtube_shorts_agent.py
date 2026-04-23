@@ -188,20 +188,14 @@ class YouTubeShortsAgent(BaseAgent):
         loop = asyncio.get_event_loop()
         video_id = _extract_video_id(url)
 
-        # ── 1. Fetch transcript: direct HTTP first, yt-dlp as fallback ──────────
-        transcript_list, err1 = await _fetch_transcript_http(video_id)
+        # ── 1. Fetch transcript via direct HTTP ───────────────────────────────
+        transcript_list, err = await _fetch_transcript_http(video_id)
         if not transcript_list:
-            print(f"[YTShorts] HTTP method failed: {err1} — trying yt-dlp fallback")
-            transcript_list, err2 = await loop.run_in_executor(
-                None, _fetch_transcript_ytdlp, video_id
+            raise ValueError(
+                f"No transcript available for this video. "
+                f"Make sure it has English captions or auto-generated subtitles enabled. "
+                f"({err[-200:]})"
             )
-            if not transcript_list:
-                detail = err2 or err1
-                raise ValueError(
-                    f"No transcript available for this video. "
-                    f"Make sure it has English captions or auto-generated subtitles enabled. "
-                    f"({detail[-200:]})"
-                )
 
         # ── 2. Build timestamped transcript text ──────────────────────────────
         total_duration = 0.0
