@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   const html = await ytRes.text();
 
   // Extract captionTracks array from the embedded ytInitialPlayerResponse JSON
-  const match = html.match(/"captionTracks":(\[.*?\])/s);
+  const match = html.match(/"captionTracks":(\[[\s\S]*?\])/);
   if (!match) {
     // Return a small snippet so the backend can log what the page actually was
     const snippet = html.slice(0, 300).replace(/\n/g, " ");
