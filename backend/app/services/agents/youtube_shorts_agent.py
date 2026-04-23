@@ -14,6 +14,21 @@ from app.services.agents.base import BaseAgent
 _cookies_tmp: str | None = None  # module-level cached path
 
 
+def _yt_dlp_bin() -> str:
+    """Resolve yt-dlp binary path reliably across venv and system installs."""
+    import sys
+    # Check PATH first
+    found = shutil.which("yt-dlp")
+    if found:
+        return found
+    # Fall back to the same bin directory as the running Python interpreter
+    bin_dir = os.path.dirname(sys.executable)
+    candidate = os.path.join(bin_dir, "yt-dlp")
+    if os.path.isfile(candidate):
+        return candidate
+    return "yt-dlp"
+
+
 def _get_cookies_file() -> str | None:
     """Write YouTube cookies env var to a temp file once; return its path.
     Prefers YOUTUBE_COOKIES_B64 (base64-encoded, safe for multi-line env vars).
@@ -73,7 +88,7 @@ def _parse_vtt(vtt_text: str) -> list[dict]:
 def _fetch_transcript_ytdlp(video_id: str) -> list[dict]:
     """Fetch transcript using yt-dlp subtitle download — works on cloud IPs."""
     import tempfile, os, glob
-    yt_dlp_bin = shutil.which("yt-dlp") or "yt-dlp"
+    yt_dlp_bin = _yt_dlp_bin()
     url = f"https://www.youtube.com/watch?v={video_id}"
     with tempfile.TemporaryDirectory() as tmpdir:
         out_template = os.path.join(tmpdir, "sub")
@@ -151,7 +166,7 @@ class YouTubeShortsAgent(BaseAgent):
             full_transcript = full_transcript[:10000] + "\n[transcript truncated]"
 
         # ── 3. Get video title via yt-dlp ─────────────────────────────────────
-        _yt_dlp = shutil.which("yt-dlp") or "yt-dlp"
+        _yt_dlp = _yt_dlp_bin()
         _cookies = _get_cookies_file()
         video_title = "YouTube Video"
         try:
@@ -247,7 +262,7 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         duration = end_seconds - start_seconds
 
         # ── 1. Resolve direct stream URLs ─────────────────────────────────────
-        _yt_dlp = shutil.which("yt-dlp") or "yt-dlp"
+        _yt_dlp = _yt_dlp_bin()
         _cookies = _get_cookies_file()
         _url_cmd = [
             _yt_dlp, "--get-url",
