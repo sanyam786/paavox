@@ -259,77 +259,73 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         title: str,
         crop_vertical: bool = True,
     ) -> str:
-        """Download a clip segment, optionally crop 16:9→9:16. Returns clip_id."""
+        """Download a clip segment via yt-dlp, crop with ffmpeg. Returns clip_id."""
+        import tempfile as _tf
         loop = asyncio.get_event_loop()
         clip_id, output_path = new_clip_path("mp4")
         duration = end_seconds - start_seconds
-
-        # ── 1. Resolve direct stream URLs ─────────────────────────────────────
-        _yt_dlp = _yt_dlp_bin()
-        _cookies = _get_cookies_file()
-        _url_cmd = [
-            _yt_dlp, "--get-url",
-            "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "--no-playlist",
-        ]
-        if _cookies:
-            _url_cmd += ["--cookies", _cookies]
-        _url_cmd.append(url)
-        try:
-            r = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(_url_cmd, capture_output=True, text=True, timeout=30),
-            )
-        except Exception as e:
-            raise Exception(f"yt-dlp could not resolve stream URL: {e}")
-
-        stream_urls = [u.strip() for u in r.stdout.strip().splitlines() if u.strip()]
-        if not stream_urls:
-            raise Exception(
-                "Could not resolve YouTube stream URL. "
-                "The video may be private, age-restricted, or yt-dlp needs updating."
-            )
-
-        video_stream = stream_urls[0]
-        audio_stream = stream_urls[1] if len(stream_urls) > 1 else None
-
-        # ── 2. Build ffmpeg command ───────────────────────────────────────────
+        _ytdlp = _yt_dlp_bin()
         _ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
-        # Pre-input -ss = fast stream-seek (accurate enough for social clips)
-        cmd = [_ffmpeg, "-y", "-ss", str(start_seconds), "-i", video_stream]
+        _cookies = _get_cookies_file()
 
-        if audio_stream:
-            cmd += ["-ss", str(start_seconds), "-i", audio_stream]
+        def _ts(secs: int) -> str:
+            h, r = divmod(secs, 3600)
+            m, s = divmod(r, 60)
+            return f"{h:02d}:{m:02d}:{s:02d}"
 
-        cmd += [
-            "-t", str(duration),
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-        ]
+        with _tf.TemporaryDirectory() as tmpdir:
+            raw_path = os.path.join(tmpdir, "raw.mp4")
 
-        if crop_vertical:
-            # Center-crop 16:9 source to 9:16, scale to 1080×1920
-            cmd += ["-vf", "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920"]
+            # ── 1. Download clip section via yt-dlp ───────────────────────────
+            dl_cmd = [
+                _ytdlp,
+                "--download-sections", f"*{_ts(start_seconds)}-{_ts(end_seconds)}",
+                "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "--merge-output-format", "mp4",
+                "--no-playlist",
+                "-o", raw_path,
+            ]
+            if _cookies:
+                dl_cmd += ["--cookies", _cookies]
+            dl_cmd.append(url)
 
-        if audio_stream:
-            cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+            try:
+                dl_result = await loop.run_in_executor(
+                    None,
+                    lambda: subprocess.run(dl_cmd, capture_output=True, text=True, timeout=300),
+                )
+            except subprocess.TimeoutExpired:
+                raise Exception("Download timed out (>5 min). Try a shorter clip.")
+            except FileNotFoundError:
+                raise Exception("yt-dlp is not installed on this server.")
 
-        cmd.append(str(output_path))
+            if dl_result.returncode != 0 or not os.path.exists(raw_path):
+                detail = dl_result.stderr[-400:] if dl_result.stderr else "unknown error"
+                raise Exception(f"yt-dlp download failed: {detail}")
 
-        # ── 3. Run ffmpeg ─────────────────────────────────────────────────────
-        try:
-            result = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=180),
-            )
-        except subprocess.TimeoutExpired:
-            raise Exception("Video processing timed out (>3 min). Try a shorter clip.")
-        except FileNotFoundError:
-            raise Exception("ffmpeg is not installed on this server.")
+            # ── 2. Encode / crop with ffmpeg from local file ──────────────────
+            ff_cmd = [_ffmpeg, "-y", "-i", raw_path, "-t", str(duration)]
+            ff_cmd += [
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+            ]
+            if crop_vertical:
+                ff_cmd += ["-vf", "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920"]
+            ff_cmd.append(str(output_path))
 
-        if result.returncode != 0 or not output_path.exists():
-            detail = result.stderr[-400:] if result.stderr else "unknown error"
-            raise Exception(f"ffmpeg failed: {detail}")
+            try:
+                ff_result = await loop.run_in_executor(
+                    None,
+                    lambda: subprocess.run(ff_cmd, capture_output=True, text=True, timeout=180),
+                )
+            except subprocess.TimeoutExpired:
+                raise Exception("Video encoding timed out (>3 min). Try a shorter clip.")
+            except FileNotFoundError:
+                raise Exception("ffmpeg is not installed on this server.")
+
+            if ff_result.returncode != 0 or not output_path.exists():
+                detail = ff_result.stderr[-400:] if ff_result.stderr else "unknown error"
+                raise Exception(f"ffmpeg failed: {detail}")
 
         return clip_id
