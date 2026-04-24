@@ -56,23 +56,23 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
         NoTranscriptFound,
         TranscriptsDisabled,
     )
-    import requests as _requests
+    import httpx as _httpx
 
     proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/")
     langs = ["en", "en-US", "en-GB", "en-IN"]
     print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
 
-    # Monkeypatch requests.Session so every session the library creates uses the proxy.
-    # GenericProxyConfig / proxies kwarg don't reliably route — this approach is definitive.
-    _orig_init = _requests.Session.__init__
+    # youtube-transcript-api 0.6.x uses httpx internally (not requests).
+    # Monkeypatch httpx.Client so every client instance the library creates routes through proxy.
+    _orig_init = _httpx.Client.__init__
 
     def _proxied_init(self, *a, **kw):
-        _orig_init(self, *a, **kw)
         if proxy:
-            self.proxies.update({"http": proxy, "https": proxy})
+            kw.setdefault("proxy", proxy)
+        _orig_init(self, *a, **kw)
 
     if proxy:
-        _requests.Session.__init__ = _proxied_init
+        _httpx.Client.__init__ = _proxied_init
 
     def _to_entries(raw) -> list[dict]:
         entries = []
@@ -133,9 +133,9 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     except Exception as e:
         return [], str(e)
     finally:
-        # Always restore the original Session.__init__
+        # Always restore the original httpx.Client.__init__
         if proxy:
-            _requests.Session.__init__ = _orig_init
+            _httpx.Client.__init__ = _orig_init
 
 
 def _extract_video_id(url: str) -> str:
