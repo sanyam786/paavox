@@ -31,13 +31,23 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     proxies = {"https": proxy, "http": proxy} if proxy else None
 
     try:
-        raw = YouTubeTranscriptApi.get_transcript(
-            video_id,
-            languages=["en", "en-US", "en-GB", "en-IN"],
-            proxies=proxies,
-        )
+        # Support both old (class method) and new (instance method) API styles
+        try:
+            api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
+            raw = api.get_transcript(video_id, languages=["en", "en-US", "en-GB", "en-IN"])
+        except TypeError:
+            # Older versions: proxies go in get_transcript, not constructor
+            raw = YouTubeTranscriptApi.get_transcript(
+                video_id, languages=["en", "en-US", "en-GB", "en-IN"], proxies=proxies
+            )
+
+        # Entries may be dicts or objects depending on version
         entries = [
-            {"text": e["text"], "start": e["start"], "duration": e["duration"]}
+            {
+                "text": e["text"] if isinstance(e, dict) else e.text,
+                "start": e["start"] if isinstance(e, dict) else e.start,
+                "duration": e["duration"] if isinstance(e, dict) else e.duration,
+            }
             for e in raw
         ]
         print(f"[YTShorts] Transcript: {len(entries)} entries (proxy={'yes' if proxy else 'no'})")
