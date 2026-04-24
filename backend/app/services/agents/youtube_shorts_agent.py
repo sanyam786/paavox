@@ -57,18 +57,22 @@ _BROWSER_UA = (
 
 # (client_info, extra_context) — extra_context is merged into the "context" dict
 _INNERTUBE_CLIENTS: list[tuple[dict, dict]] = [
+    # ANDROID_TESTSUITE: lightweight, often avoids bot checks, no PO token needed
     (
         {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
         {},
     ),
+    # ANDROID: full Android client — returns caption tracks reliably
     (
-        {"clientName": "MWEB", "clientVersion": "2.20231219.01.00", "hl": "en", "gl": "US"},
+        {"clientName": "ANDROID", "clientVersion": "19.29.34", "androidSdkVersion": 30, "hl": "en", "gl": "US"},
         {},
     ),
+    # WEB_EMBEDDED_PLAYER: embed context, less bot-detection pressure
     (
-        {"clientName": "WEB_EMBEDDED_PLAYER", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"},
+        {"clientName": "WEB_EMBEDDED_PLAYER", "clientVersion": "2.20240726.00.00", "hl": "en", "gl": "US"},
         {"thirdParty": {"embedUrl": "https://www.youtube.com/"}},
     ),
+    # WEB: last resort
     (
         {"clientName": "WEB", "clientVersion": "2.20240726.00.00", "hl": "en", "gl": "US"},
         {},
@@ -117,7 +121,8 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
         cmd = [
             _yt_dlp_bin(),
             "--skip-download", "--dump-json", "--no-playlist", "-q",
-            "--extractor-args", "youtube:player_client=mweb,web,android",
+            # mweb now requires a GVS PO Token → use tv_embedded + android instead
+            "--extractor-args", "youtube:player_client=tv_embedded,android,web",
         ]
         if proxy:
             cmd += ["--proxy", proxy]
@@ -233,7 +238,7 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     # ── Strategy 3: Groq Whisper — download audio and transcribe ─────────────
     print("[YTShorts] Falling back to Groq Whisper audio transcription...")
     import tempfile as _tf2
-    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    groq_key = (os.environ.get("GROQ_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or "").strip()
     if groq_key:
         try:
             from groq import Groq as _Groq
