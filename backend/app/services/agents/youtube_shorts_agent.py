@@ -19,6 +19,36 @@ def _yt_dlp_bin() -> str:
     return candidate if os.path.isfile(candidate) else "yt-dlp"
 
 
+_cookies_tmp: str | None = None
+
+
+def _get_cookies_file() -> str | None:
+    """Write YOUTUBE_COOKIES_B64 / YOUTUBE_COOKIES env var to a temp file once."""
+    global _cookies_tmp
+    if _cookies_tmp and os.path.exists(_cookies_tmp):
+        return _cookies_tmp
+
+    import base64
+    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+    if b64:
+        try:
+            content = base64.b64decode(b64).decode("utf-8")
+        except Exception:
+            content = ""
+    else:
+        content = os.environ.get("YOUTUBE_COOKIES", "").strip()
+
+    if not content:
+        return None
+
+    fd, path = _tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
+    with os.fdopen(fd, "w") as f:
+        f.write(content)
+    _cookies_tmp = path
+    print(f"[YTShorts] Cookies file ready ({len(content)} chars)")
+    return path
+
+
 def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     """Fetch transcript via youtube-transcript-api, using YOUTUBE_PROXY if set."""
     from youtube_transcript_api import (
@@ -241,6 +271,8 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
             m, s = divmod(r, 60)
             return f"{h:02d}:{m:02d}:{s:02d}"
 
+        cookies = _get_cookies_file()
+
         with _tf.TemporaryDirectory() as tmpdir:
             raw_path = os.path.join(tmpdir, "raw.mp4")
 
@@ -252,8 +284,10 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
                 "--merge-output-format", "mp4",
                 "--no-playlist",
                 "-o", raw_path,
-                url,
             ]
+            if cookies:
+                dl_cmd += ["--cookies", cookies]
+            dl_cmd.append(url)
 
             try:
                 dl_result = await loop.run_in_executor(
@@ -268,6 +302,14 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
             if dl_result.returncode != 0 or not os.path.exists(raw_path):
                 detail = dl_result.stderr[-400:] if dl_result.stderr else "unknown error"
                 raise Exception(f"yt-dlp download failed: {detail}")
+
+            raw_size = os.path.getsize(raw_path)
+            if raw_size < 10_000:
+                detail = dl_result.stderr[-400:] if dl_result.stderr else "no details"
+                raise Exception(
+                    f"yt-dlp downloaded an empty/invalid file ({raw_size} bytes). "
+                    f"This usually means YouTube blocked the request — ensure YOUTUBE_COOKIES_B64 is set and valid. {detail}"
+                )
 
             # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
             ff_cmd = [_ffmpeg, "-y", "-i", raw_path, "-t", str(duration)]
