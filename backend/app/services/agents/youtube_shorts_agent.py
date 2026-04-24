@@ -84,7 +84,13 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
         return entries
 
     try:
-        api = YouTubeTranscriptApi()
+        cookies_path = _get_cookies_file()
+        try:
+            api = YouTubeTranscriptApi(cookie_path=cookies_path) if cookies_path else YouTubeTranscriptApi()
+            print(f"[YTShorts] API created (cookies={'yes' if cookies_path else 'no'})")
+        except TypeError:
+            api = YouTubeTranscriptApi()
+            print(f"[YTShorts] API created (cookie_path kwarg not supported)")
 
         # Strategy 1: fetch(languages=…) — newest API
         if hasattr(api, "fetch"):
