@@ -488,23 +488,47 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
 
             print(f"[YTShorts] Downloaded {raw_size // 1024}KB, seeking to {start_seconds}s for {duration}s clip")
 
-            # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
-            # YouTube format 18 is VFR (variable frame rate).
-            # `-r 30` alone does NOT fix VFR — it only hints the muxer.
-            # The `fps=fps=30` VIDEO FILTER rewrites frame timestamps before libx264
-            # sees them, converting VFR → CFR. Must be FIRST in the filter chain.
-            # `-vsync cfr` enforces CFR at the output level as a second guarantee.
-            # Fast seek (-ss before -i) resets output timestamps to 0 so -t works correctly.
-            vf = "fps=fps=30"
+            # ── 2a. Stream-copy the clip segment (no re-encode) ──────────────
+            # Fast seek + stream copy resets container timestamps to 0.
+            # This produces a clean intermediate with CFR-friendly timestamps,
+            # avoiding the ffmpeg 7.x VFR + libx264 deadlock (frame=0/time=N/A).
+            clip_raw_path = os.path.join(tmpdir, "clip_raw.mp4")
+            copy_cmd = [
+                _ffmpeg, "-y",
+                "-ss", str(start_seconds),
+                "-i", raw_path,
+                "-t", str(duration + 2),   # small buffer; precise cut in step 2b
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
+                clip_raw_path,
+            ]
+            try:
+                cp_result = await loop.run_in_executor(
+                    None,
+                    lambda: subprocess.run(copy_cmd, capture_output=True, text=True, timeout=120),
+                )
+            except subprocess.TimeoutExpired:
+                raise Exception("Clip extraction timed out.")
+            except FileNotFoundError:
+                raise Exception("ffmpeg is not installed on this server.")
+
+            if cp_result.returncode != 0 or not os.path.exists(clip_raw_path):
+                detail = cp_result.stderr[-800:] if cp_result.stderr else "unknown error"
+                raise Exception(f"ffmpeg clip extraction failed: {detail}")
+
+            clip_size = os.path.getsize(clip_raw_path)
+            print(f"[YTShorts] Clip extracted: {clip_size // 1024}KB")
+
+            # ── 2b. Encode / crop from the clean clip ────────────────────────
+            # Input now has timestamps starting at 0 — fps=30 filter works cleanly.
+            vf = "fps=30"
             if crop_vertical:
                 vf += ",crop=trunc(ih*9/16/2)*2:ih:(iw-trunc(ih*9/16/2)*2)/2:0,scale=1080:1920"
 
             ff_cmd = [
                 _ffmpeg, "-y",
-                "-ss", str(start_seconds),
-                "-i", raw_path,
+                "-i", clip_raw_path,
                 "-t", str(duration),
-                "-vsync", "cfr",
                 "-vf", vf,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
@@ -523,7 +547,7 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
                 raise Exception("ffmpeg is not installed on this server.")
 
             if ff_result.returncode != 0 or not output_path.exists():
-                detail = ff_result.stderr[-1200:] if ff_result.stderr else "unknown error"
+                detail = ff_result.stderr[-1500:] if ff_result.stderr else "unknown error"
                 raise Exception(f"ffmpeg failed: {detail}")
 
         return clip_id
