@@ -148,7 +148,7 @@ export default function RepurposeAgentPage() {
     setAnalysis(null);
     setClipStates({});
     try {
-      const { data } = await apiClient.post('/api/v1/agents/youtube-shorts/analyze', { url: youtubeUrl });
+      const { data } = await apiClient.post('/api/v1/agents/youtube-shorts/analyze', { url: youtubeUrl.trim() });
       setAnalysis(data);
     } catch (err: any) {
       setShortsError(err.response?.data?.detail ?? err.message ?? 'Analysis failed.');
@@ -162,7 +162,7 @@ export default function RepurposeAgentPage() {
     setClipStates(prev => ({ ...prev, [idx]: { generating: true, clip_id: null, public_url: null, downloading: false, uploading: false, uploaded: false, youtube_url: null, error: '' } }));
     try {
       const { data } = await apiClient.post('/api/v1/agents/youtube-shorts/clip', {
-        url: youtubeUrl,
+        url: youtubeUrl.trim(),
         start_seconds: moment.start_seconds,
         end_seconds: moment.end_seconds,
         title: moment.title,

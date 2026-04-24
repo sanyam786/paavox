@@ -287,16 +287,22 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
 
 
 def _extract_video_id(url: str) -> str:
+    url = url.strip()
     patterns = [
         r"youtu\.be/([A-Za-z0-9_-]{11})",
         r"[?&]v=([A-Za-z0-9_-]{11})",
         r"shorts/([A-Za-z0-9_-]{11})",
         r"embed/([A-Za-z0-9_-]{11})",
+        r"live/([A-Za-z0-9_-]{11})",
+        r"youtube\.com/v/([A-Za-z0-9_-]{11})",
     ]
     for p in patterns:
         m = re.search(p, url)
         if m:
             return m.group(1)
+    # Last resort: bare 11-char video ID passed directly
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url):
+        return url
     raise ValueError("Invalid YouTube URL. Use a youtube.com or youtu.be link.")
 
 
