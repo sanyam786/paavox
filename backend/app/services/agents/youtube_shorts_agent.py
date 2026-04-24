@@ -50,120 +50,69 @@ def _get_cookies_file() -> str | None:
 
 
 def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript via youtube-transcript-api, using YOUTUBE_PROXY if set."""
-    from youtube_transcript_api import (
-        YouTubeTranscriptApi,
-        NoTranscriptFound,
-        TranscriptsDisabled,
-    )
+    """Fetch transcript using yt-dlp (handles proxy + cookies natively)."""
+    import glob
+    import tempfile as _tf
 
     proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/")
-    langs = ["en", "en-US", "en-GB", "en-IN"]
-    print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
+    cookies = _get_cookies_file()
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    _ytdlp = _yt_dlp_bin()
+    print(f"[YTShorts] Fetching transcript for {video_id} via yt-dlp (proxy={'yes' if proxy else 'no'}, cookies={'yes' if cookies else 'no'})")
 
-    # Set env vars so requests (used internally) picks up the proxy automatically
-    if proxy:
-        os.environ["HTTP_PROXY"] = proxy
-        os.environ["HTTPS_PROXY"] = proxy
-
-    def _to_entries(raw) -> list[dict]:
-        entries = []
-        for e in raw:
-            if isinstance(e, dict):
-                entries.append({"text": e["text"], "start": e["start"], "duration": e["duration"]})
-            else:
-                entries.append({"text": e.text, "start": e.start, "duration": e.duration})
-        return entries
-
-    errors: list[str] = []
-
-    try:
-        # Build API instance — try proxy_config (new API, 0.6.x+) then proxies kwarg (old API)
-        api = None
+    with _tf.TemporaryDirectory() as tmpdir:
+        out_tmpl = os.path.join(tmpdir, "%(id)s")
+        cmd = [
+            _ytdlp,
+            "--skip-download",
+            "--write-auto-sub",
+            "--write-sub",
+            "--sub-lang", "en,en-US,en-GB,en-IN",
+            "--sub-format", "json3",
+            "--no-playlist",
+            "-o", out_tmpl,
+        ]
         if proxy:
-            try:
-                from youtube_transcript_api.proxies import GenericProxyConfig
-                api = YouTubeTranscriptApi(
-                    proxy_config=GenericProxyConfig(http_url=proxy, https_url=proxy)
-                )
-                print(f"[YTShorts] Using proxy via GenericProxyConfig")
-            except (ImportError, Exception) as e:
-                print(f"[YTShorts] GenericProxyConfig failed ({e!r}), trying proxies kwarg")
+            cmd += ["--proxy", proxy]
+        if cookies:
+            cmd += ["--cookies", cookies]
+        cmd.append(url)
 
-            if api is None:
-                try:
-                    api = YouTubeTranscriptApi(proxies={"http": proxy, "https": proxy})
-                    print(f"[YTShorts] Using proxy via proxies kwarg")
-                except TypeError:
-                    print(f"[YTShorts] proxies kwarg not supported — relying on HTTP_PROXY env vars")
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            return [], "yt-dlp subtitle fetch timed out (>60s)"
+        except FileNotFoundError:
+            return [], "yt-dlp is not installed"
 
-        if api is None:
-            api = YouTubeTranscriptApi()
+        json3_files = glob.glob(os.path.join(tmpdir, "*.json3"))
+        if not json3_files:
+            detail = (r.stderr or r.stdout)[-400:].strip()
+            return [], f"No subtitles found. {detail}"
 
-        # ── Strategy 1: instance .fetch(languages=…) — newest API ────────────
-        if hasattr(api, "fetch"):
-            try:
-                raw = list(api.fetch(video_id, languages=langs))
-                entries = _to_entries(raw)
-                print(f"[YTShorts] Transcript via fetch(languages): {len(entries)} entries")
-                return entries, ""
-            except (TranscriptsDisabled, NoTranscriptFound):
-                raise
-            except TypeError:
-                pass  # languages kwarg not supported, try without
-            except Exception as e:
-                errors.append(f"fetch(languages): {type(e).__name__}: {e}")
-                print(f"[YTShorts] fetch(languages) failed: {type(e).__name__}: {e!r}")
-
-            # Strategy 1b: fetch without languages kwarg
-            try:
-                raw = list(api.fetch(video_id))
-                entries = _to_entries(raw)
-                print(f"[YTShorts] Transcript via fetch(): {len(entries)} entries")
-                return entries, ""
-            except (TranscriptsDisabled, NoTranscriptFound):
-                raise
-            except Exception as e:
-                errors.append(f"fetch(): {type(e).__name__}: {e}")
-                print(f"[YTShorts] fetch() failed: {type(e).__name__}: {e!r}")
-
-        # ── Strategy 2: api.list() → find_transcript() → fetch() ─────────────
-        if hasattr(api, "list"):
-            try:
-                tlist = api.list(video_id)
-                transcript = tlist.find_transcript(langs)
-                raw = list(transcript.fetch())
-                entries = _to_entries(raw)
-                print(f"[YTShorts] Transcript via list().find().fetch(): {len(entries)} entries")
-                return entries, ""
-            except (TranscriptsDisabled, NoTranscriptFound):
-                raise
-            except Exception as e:
-                errors.append(f"list().find().fetch(): {type(e).__name__}: {e}")
-                print(f"[YTShorts] list().find().fetch() failed: {type(e).__name__}: {e!r}")
-
-        # ── Strategy 3: instance .get_transcript() — older API ───────────────
-        if hasattr(api, "get_transcript"):
-            try:
-                raw = api.get_transcript(video_id, languages=langs)
-                entries = _to_entries(raw)
-                print(f"[YTShorts] Transcript via instance.get_transcript(): {len(entries)} entries")
-                return entries, ""
-            except (TranscriptsDisabled, NoTranscriptFound):
-                raise
-            except Exception as e:
-                errors.append(f"instance.get_transcript(): {type(e).__name__}: {e}")
-                print(f"[YTShorts] instance.get_transcript() failed: {type(e).__name__}: {e!r}")
-
-        summary = "; ".join(errors) if errors else "no compatible API method found"
-        raise Exception(summary)
-
-    except TranscriptsDisabled:
-        return [], "Captions are disabled for this video"
-    except NoTranscriptFound:
-        return [], "No English transcript found for this video"
-    except Exception as e:
-        return [], str(e)
+        try:
+            with open(json3_files[0]) as f:
+                data = json.load(f)
+            entries = []
+            for event in data.get("events", []):
+                if "segs" not in event:
+                    continue
+                text = "".join(s.get("utf8", "") for s in event["segs"]).strip()
+                if not text or text == "\n":
+                    continue
+                start_ms = event.get("tStartMs", 0)
+                dur_ms = event.get("dDurationMs", 0)
+                entries.append({
+                    "text": text,
+                    "start": start_ms / 1000,
+                    "duration": dur_ms / 1000,
+                })
+            if not entries:
+                return [], "yt-dlp produced an empty transcript"
+            print(f"[YTShorts] Transcript via yt-dlp: {len(entries)} entries")
+            return entries, ""
+        except Exception as e:
+            return [], f"Failed to parse yt-dlp subtitle: {e}"
 
 
 def _extract_video_id(url: str) -> str:
