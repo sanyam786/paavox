@@ -489,22 +489,28 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
             print(f"[YTShorts] Downloaded {raw_size // 1024}KB, seeking to {start_seconds}s for {duration}s clip")
 
             # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
-            # Root cause of frame=0/time=N/A: YouTube format 18 is VFR (variable frame rate).
-            # libx264 cannot encode without a known frame rate → add -r 30 to force CFR.
+            # YouTube format 18 is VFR (variable frame rate).
+            # `-r 30` alone does NOT fix VFR — it only hints the muxer.
+            # The `fps=fps=30` VIDEO FILTER rewrites frame timestamps before libx264
+            # sees them, converting VFR → CFR. Must be FIRST in the filter chain.
+            # `-vsync cfr` enforces CFR at the output level as a second guarantee.
             # Fast seek (-ss before -i) resets output timestamps to 0 so -t works correctly.
+            vf = "fps=fps=30"
+            if crop_vertical:
+                vf += ",crop=trunc(ih*9/16/2)*2:ih:(iw-trunc(ih*9/16/2)*2)/2:0,scale=1080:1920"
+
             ff_cmd = [
                 _ffmpeg, "-y",
                 "-ss", str(start_seconds),
                 "-i", raw_path,
                 "-t", str(duration),
-                "-r", "30",                  # force CFR — fixes VFR input with libx264
+                "-vsync", "cfr",
+                "-vf", vf,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
+                str(output_path),
             ]
-            if crop_vertical:
-                ff_cmd += ["-vf", "crop=trunc(ih*9/16/2)*2:ih:(iw-trunc(ih*9/16/2)*2)/2:0,scale=1080:1920"]
-            ff_cmd.append(str(output_path))
 
             try:
                 ff_result = await loop.run_in_executor(
