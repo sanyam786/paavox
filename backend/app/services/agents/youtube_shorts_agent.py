@@ -74,10 +74,28 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     errors: list[str] = []
 
     try:
-        # Build API instance (newer versions accept proxies kwarg)
-        try:
-            api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
-        except TypeError:
+        # Build API instance — try proxy_config (new API, 0.6.x+) then proxies kwarg (old API)
+        api = None
+        if proxies:
+            try:
+                from youtube_transcript_api.proxies import GenericProxyConfig
+                api = YouTubeTranscriptApi(
+                    proxy_config=GenericProxyConfig(
+                        http_url=proxy, https_url=proxy
+                    )
+                )
+                print(f"[YTShorts] Using proxy via GenericProxyConfig")
+            except (ImportError, Exception) as e:
+                print(f"[YTShorts] GenericProxyConfig failed ({e}), trying proxies kwarg")
+
+            if api is None:
+                try:
+                    api = YouTubeTranscriptApi(proxies=proxies)
+                    print(f"[YTShorts] Using proxy via proxies kwarg")
+                except TypeError:
+                    print(f"[YTShorts] proxies kwarg not supported — proxy NOT applied!")
+
+        if api is None:
             api = YouTubeTranscriptApi()
 
         # ── Strategy 1: instance .fetch(languages=…) — newest API ────────────
