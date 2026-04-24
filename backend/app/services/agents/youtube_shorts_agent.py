@@ -60,6 +60,7 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     proxy = os.environ.get("YOUTUBE_PROXY", "").strip()
     proxies = {"https": proxy, "http": proxy} if proxy else None
     langs = ["en", "en-US", "en-GB", "en-IN"]
+    print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
 
     def _to_entries(raw) -> list[dict]:
         entries = []
@@ -70,41 +71,72 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
                 entries.append({"text": e.text, "start": e.start, "duration": e.duration})
         return entries
 
+    errors: list[str] = []
+
     try:
-        raw = None
-
-        # ── Strategy 1: instance .fetch() — newest API ────────────────────────
+        # Build API instance (newer versions accept proxies kwarg)
         try:
+            api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
+        except TypeError:
+            api = YouTubeTranscriptApi()
+
+        # ── Strategy 1: instance .fetch(languages=…) — newest API ────────────
+        if hasattr(api, "fetch"):
             try:
-                api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
+                raw = list(api.fetch(video_id, languages=langs))
+                entries = _to_entries(raw)
+                print(f"[YTShorts] Transcript via fetch(languages): {len(entries)} entries")
+                return entries, ""
+            except (TranscriptsDisabled, NoTranscriptFound):
+                raise
             except TypeError:
-                api = YouTubeTranscriptApi()
-            if hasattr(api, "fetch"):
-                try:
-                    raw = list(api.fetch(video_id, languages=langs))
-                except TypeError:
-                    raw = list(api.fetch(video_id))
-        except Exception:
-            pass
+                pass  # languages kwarg not supported, try without
+            except Exception as e:
+                errors.append(f"fetch(languages): {e}")
+                print(f"[YTShorts] fetch(languages) failed: {e}")
 
-        # ── Strategy 2: instance .get_transcript() ────────────────────────────
-        if raw is None:
+            # Strategy 1b: fetch without languages kwarg
             try:
-                api = YouTubeTranscriptApi()
-                if hasattr(api, "get_transcript"):
-                    raw = api.get_transcript(video_id, languages=langs)
-            except Exception:
-                pass
+                raw = list(api.fetch(video_id))
+                entries = _to_entries(raw)
+                print(f"[YTShorts] Transcript via fetch(): {len(entries)} entries")
+                return entries, ""
+            except (TranscriptsDisabled, NoTranscriptFound):
+                raise
+            except Exception as e:
+                errors.append(f"fetch(): {e}")
+                print(f"[YTShorts] fetch() failed: {e}")
 
-        # ── Strategy 3: class method .get_transcript() — old API ─────────────
-        if raw is None:
-            raw = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=langs, proxies=proxies
-            )
+        # ── Strategy 2: api.list() → find_transcript() → fetch() ─────────────
+        if hasattr(api, "list"):
+            try:
+                tlist = api.list(video_id)
+                transcript = tlist.find_transcript(langs)
+                raw = list(transcript.fetch())
+                entries = _to_entries(raw)
+                print(f"[YTShorts] Transcript via list().find().fetch(): {len(entries)} entries")
+                return entries, ""
+            except (TranscriptsDisabled, NoTranscriptFound):
+                raise
+            except Exception as e:
+                errors.append(f"list().find().fetch(): {e}")
+                print(f"[YTShorts] list().find().fetch() failed: {e}")
 
-        entries = _to_entries(raw)
-        print(f"[YTShorts] Transcript: {len(entries)} entries (proxy={'yes' if proxy else 'no'})")
-        return entries, ""
+        # ── Strategy 3: instance .get_transcript() — older API ───────────────
+        if hasattr(api, "get_transcript"):
+            try:
+                raw = api.get_transcript(video_id, languages=langs)
+                entries = _to_entries(raw)
+                print(f"[YTShorts] Transcript via instance.get_transcript(): {len(entries)} entries")
+                return entries, ""
+            except (TranscriptsDisabled, NoTranscriptFound):
+                raise
+            except Exception as e:
+                errors.append(f"instance.get_transcript(): {e}")
+                print(f"[YTShorts] instance.get_transcript() failed: {e}")
+
+        summary = "; ".join(errors) if errors else "no compatible API method found"
+        raise Exception(summary)
 
     except TranscriptsDisabled:
         return [], "Captions are disabled for this video"
