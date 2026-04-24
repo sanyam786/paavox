@@ -70,6 +70,7 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             "--sub-lang", "en,en-US,en-GB,en-IN",
             "--sub-format", "json3",
             "--no-playlist",
+            "--extractor-args", "youtube:player_client=android,web",
             "-o", out_tmpl,
         ]
         if proxy:
