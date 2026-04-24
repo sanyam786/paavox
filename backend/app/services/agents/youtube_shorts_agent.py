@@ -451,46 +451,42 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         with _tf.TemporaryDirectory() as tmpdir:
             raw_path = os.path.join(tmpdir, "raw.mp4")
 
-            # ── 1. Download clip section via yt-dlp ───────────────────────────
-            dl_cmd = [
-                _ytdlp,
-                "--download-sections", f"*{_ts(start_seconds)}-{_ts(end_seconds)}",
-                "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                "--merge-output-format", "mp4",
+            # ── 1. Get signed CDN stream URL via yt-dlp (proxy used here) ─────
+            # CDN URLs are IP-unrestricted once signed, so ffmpeg fetches directly.
+            get_url_cmd = [
+                _ytdlp, "-g",
+                "--format", "best[ext=mp4][height<=1080]/best[ext=mp4]/best",
                 "--no-playlist",
-                "-o", raw_path,
             ]
             if cookies:
-                dl_cmd += ["--cookies", cookies]
+                get_url_cmd += ["--cookies", cookies]
             if proxy:
-                dl_cmd += ["--proxy", proxy]
-            dl_cmd.append(url)
+                get_url_cmd += ["--proxy", proxy]
+            get_url_cmd.append(url)
 
             try:
-                dl_result = await loop.run_in_executor(
+                url_result = await loop.run_in_executor(
                     None,
-                    lambda: subprocess.run(dl_cmd, capture_output=True, text=True, timeout=300),
+                    lambda: subprocess.run(get_url_cmd, capture_output=True, text=True, timeout=60),
                 )
             except subprocess.TimeoutExpired:
-                raise Exception("Download timed out (>5 min). Try a shorter clip.")
+                raise Exception("URL extraction timed out (>60s).")
             except FileNotFoundError:
                 raise Exception("yt-dlp is not installed on this server.")
 
-            if dl_result.returncode != 0 or not os.path.exists(raw_path):
-                detail = dl_result.stderr[-400:] if dl_result.stderr else "unknown error"
+            if url_result.returncode != 0 or not url_result.stdout.strip():
+                detail = url_result.stderr[-400:] if url_result.stderr else "unknown error"
                 raise Exception(f"yt-dlp download failed: {detail}")
 
-            raw_size = os.path.getsize(raw_path)
-            if raw_size < 10_000:
-                detail = dl_result.stderr[-400:] if dl_result.stderr else "no details"
-                raise Exception(
-                    f"yt-dlp downloaded an empty/invalid file ({raw_size} bytes). "
-                    f"This usually means YouTube blocked the request — ensure YOUTUBE_COOKIES_B64 is set and valid. {detail}"
-                )
+            stream_url = url_result.stdout.strip().splitlines()[0]
 
-            # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
-            ff_cmd = [_ffmpeg, "-y", "-i", raw_path, "-t", str(duration)]
-            ff_cmd += [
+            # ── 2. Download section + encode with ffmpeg directly from CDN ────
+            # -ss before -i = fast input seek; ffmpeg fetches from CDN directly.
+            ff_cmd = [
+                _ffmpeg, "-y",
+                "-ss", str(start_seconds),
+                "-i", stream_url,
+                "-t", str(duration),
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
