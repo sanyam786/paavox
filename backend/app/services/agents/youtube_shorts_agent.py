@@ -49,99 +49,97 @@ def _get_cookies_file() -> str | None:
     return path
 
 
-def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript via youtube-transcript-api with proxy forced at the requests level."""
-    from youtube_transcript_api import (
-        YouTubeTranscriptApi,
-        NoTranscriptFound,
-        TranscriptsDisabled,
-    )
-    import httpx as _httpx
+_INNERTUBE_CLIENTS = [
+    {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
+    {"clientName": "ANDROID", "clientVersion": "19.09.37", "androidSdkVersion": 30, "hl": "en", "gl": "US"},
+    {"clientName": "WEB", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"},
+]
 
-    proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/")
-    langs = ["en", "en-US", "en-GB", "en-IN"]
+
+def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
+    """Fetch transcript via YouTube InnerTube API using httpx with residential proxy."""
+    import httpx
+
+    proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/") or None
     print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
 
-    # youtube-transcript-api 0.6.x uses httpx internally (not requests).
-    # Monkeypatch httpx.Client so every client instance the library creates routes through proxy.
-    _orig_init = _httpx.Client.__init__
-
-    def _proxied_init(self, *a, **kw):
-        if proxy:
-            kw.setdefault("proxy", proxy)
-        _orig_init(self, *a, **kw)
-
-    if proxy:
-        _httpx.Client.__init__ = _proxied_init
-
-    def _to_entries(raw) -> list[dict]:
-        entries = []
-        for e in raw:
-            if isinstance(e, dict):
-                entries.append({"text": e["text"], "start": e["start"], "duration": e["duration"]})
-            else:
-                entries.append({"text": e.text, "start": e.start, "duration": e.duration})
-        return entries
-
-    try:
-        cookies_path = _get_cookies_file()
+    # Load cookies from file into a dict for httpx
+    cookies: dict[str, str] = {}
+    cookies_path = _get_cookies_file()
+    if cookies_path:
         try:
-            api = YouTubeTranscriptApi(cookie_path=cookies_path) if cookies_path else YouTubeTranscriptApi()
-            print(f"[YTShorts] API created (cookies={'yes' if cookies_path else 'no'})")
-        except TypeError:
-            api = YouTubeTranscriptApi()
-            print(f"[YTShorts] API created (cookie_path kwarg not supported)")
+            import http.cookiejar
+            jar = http.cookiejar.MozillaCookieJar()
+            jar.load(cookies_path, ignore_discard=True, ignore_expires=True)
+            cookies = {c.name: c.value for c in jar if "youtube.com" in (c.domain or "")}
+            print(f"[YTShorts] Loaded {len(cookies)} cookies for YouTube")
+        except Exception as ce:
+            print(f"[YTShorts] Cookie load warning: {ce}")
 
-        # Strategy 1: fetch(languages=…) — newest API
-        if hasattr(api, "fetch"):
+    with httpx.Client(proxy=proxy, timeout=30, cookies=cookies) as client:
+        for client_info in _INNERTUBE_CLIENTS:
             try:
-                raw = list(api.fetch(video_id, languages=langs))
-                entries = _to_entries(raw)
-                print(f"[YTShorts] Transcript via fetch(languages): {len(entries)} entries")
-                return entries, ""
-            except (TranscriptsDisabled, NoTranscriptFound):
-                raise
-            except TypeError:
-                pass
+                resp = client.post(
+                    "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+                    json={"videoId": video_id, "context": {"client": client_info}},
+                    headers={"Content-Type": "application/json"},
+                )
+                if not resp.is_success:
+                    print(f"[YTShorts] InnerTube {client_info['clientName']} HTTP {resp.status_code}")
+                    continue
+
+                data = resp.json()
+                status = data.get("playabilityStatus", {}).get("status", "")
+                if status in ("LOGIN_REQUIRED", "ERROR"):
+                    reason = data.get("playabilityStatus", {}).get("reason", "")
+                    print(f"[YTShorts] InnerTube {client_info['clientName']} status={status} reason={reason}")
+                    continue
+
+                tracks = (
+                    data.get("captions", {})
+                    .get("playerCaptionsTracklistRenderer", {})
+                    .get("captionTracks", [])
+                )
+                if not tracks:
+                    print(f"[YTShorts] InnerTube {client_info['clientName']} no caption tracks")
+                    continue
+
+                # Prefer auto-generated English, fall back to any English
+                en_track = next(
+                    (t for t in tracks if t.get("languageCode", "").startswith("en") and t.get("kind") == "asr"),
+                    next((t for t in tracks if t.get("languageCode", "").startswith("en")), None),
+                )
+                if not en_track:
+                    langs = [t.get("languageCode") for t in tracks]
+                    return [], f"No English captions. Available: {langs}"
+
+                cap_resp = client.get(f"{en_track['baseUrl']}&fmt=json3")
+                if not cap_resp.is_success:
+                    print(f"[YTShorts] Caption fetch HTTP {cap_resp.status_code}")
+                    continue
+
+                cap_data = cap_resp.json()
+                entries = []
+                for event in cap_data.get("events", []):
+                    if "segs" not in event:
+                        continue
+                    text = "".join(s.get("utf8", "") for s in event["segs"]).strip()
+                    if not text or text == "\n":
+                        continue
+                    start_ms = event.get("tStartMs", 0)
+                    dur_ms = event.get("dDurationMs", 0)
+                    entries.append({"text": text, "start": start_ms / 1000, "duration": dur_ms / 1000})
+
+                if entries:
+                    print(f"[YTShorts] Transcript via InnerTube/{client_info['clientName']}: {len(entries)} entries")
+                    return entries, ""
+
+                print(f"[YTShorts] InnerTube {client_info['clientName']} returned empty transcript")
+
             except Exception as e:
-                print(f"[YTShorts] fetch(languages) failed: {type(e).__name__}: {e!r}")
+                print(f"[YTShorts] InnerTube {client_info['clientName']} error: {type(e).__name__}: {e!r}")
 
-            try:
-                raw = list(api.fetch(video_id))
-                entries = _to_entries(raw)
-                print(f"[YTShorts] Transcript via fetch(): {len(entries)} entries")
-                return entries, ""
-            except (TranscriptsDisabled, NoTranscriptFound):
-                raise
-            except Exception as e:
-                print(f"[YTShorts] fetch() failed: {type(e).__name__}: {e!r}")
-
-        # Strategy 2: list().find_transcript().fetch() — 0.6.x
-        if hasattr(api, "list"):
-            try:
-                tlist = api.list(video_id)
-                transcript = tlist.find_transcript(langs)
-                raw = list(transcript.fetch())
-                entries = _to_entries(raw)
-                print(f"[YTShorts] Transcript via list().find().fetch(): {len(entries)} entries")
-                return entries, ""
-            except (TranscriptsDisabled, NoTranscriptFound):
-                raise
-            except Exception as e:
-                print(f"[YTShorts] list().find().fetch() failed: {type(e).__name__}: {e!r}")
-
-        raise Exception("no compatible youtube-transcript-api method found")
-
-    except TranscriptsDisabled:
-        return [], "Captions are disabled for this video"
-    except NoTranscriptFound:
-        return [], "No English transcript found for this video"
-    except Exception as e:
-        return [], str(e)
-    finally:
-        # Always restore the original httpx.Client.__init__
-        if proxy:
-            _httpx.Client.__init__ = _orig_init
+    return [], "Could not fetch transcript — all InnerTube clients failed (check Railway logs for details)"
 
 
 def _extract_video_id(url: str) -> str:
