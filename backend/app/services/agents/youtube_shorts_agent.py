@@ -488,18 +488,26 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
 
             print(f"[YTShorts] Downloaded {raw_size // 1024}KB, seeking to {start_seconds}s for {duration}s clip")
 
-            # ── 2. Encode / crop with ffmpeg (-ss BEFORE -i = fast input seek) ─
+            # Probe: log stream info so we can diagnose format issues
+            probe = subprocess.run(
+                [_ffmpeg, "-v", "error", "-show_streams", "-i", raw_path],
+                capture_output=True, text=True, timeout=15,
+            )
+            print(f"[YTShorts] ffprobe streams: {(probe.stdout or probe.stderr)[:400]}")
+
+            # ── 2. Encode / crop with ffmpeg (slow/accurate seek after -i) ────
             ff_cmd = [
                 _ffmpeg, "-y",
-                "-ss", str(start_seconds),   # fast seek before input
                 "-i", raw_path,
+                "-ss", str(start_seconds),   # slow seek after input (accurate)
                 "-t", str(duration),
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
             ]
             if crop_vertical:
-                ff_cmd += ["-vf", "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920"]
+                # trunc to even numbers — libx264 requires width/height divisible by 2
+                ff_cmd += ["-vf", "crop=trunc(ih*9/16/2)*2:ih:trunc((iw-trunc(ih*9/16/2)*2)/2)*2:0,scale=1080:1920"]
             ff_cmd.append(str(output_path))
 
             try:
@@ -513,7 +521,7 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
                 raise Exception("ffmpeg is not installed on this server.")
 
             if ff_result.returncode != 0 or not output_path.exists():
-                detail = ff_result.stderr[-400:] if ff_result.stderr else "unknown error"
+                detail = ff_result.stderr[-1200:] if ff_result.stderr else "unknown error"
                 raise Exception(f"ffmpeg failed: {detail}")
 
         return clip_id
