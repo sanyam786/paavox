@@ -49,21 +49,66 @@ def _get_cookies_file() -> str | None:
     return path
 
 
-_INNERTUBE_CLIENTS = [
-    {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
-    {"clientName": "ANDROID", "clientVersion": "19.09.37", "androidSdkVersion": 30, "hl": "en", "gl": "US"},
-    {"clientName": "WEB", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"},
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+# (client_info, extra_context) — extra_context is merged into the "context" dict
+_INNERTUBE_CLIENTS: list[tuple[dict, dict]] = [
+    (
+        {"clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "clientVersion": "2.0", "hl": "en", "gl": "US"},
+        {"thirdParty": {"embedUrl": "https://www.youtube.com/"}},
+    ),
+    (
+        {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
+        {},
+    ),
+    (
+        {
+            "clientName": "IOS", "clientVersion": "19.29.1",
+            "deviceMake": "Apple", "deviceModel": "iPhone16,2",
+            "osName": "iPhone", "osVersion": "17.5.1.21F90",
+            "hl": "en", "gl": "US",
+        },
+        {},
+    ),
+    (
+        {"clientName": "WEB", "clientVersion": "2.20240726.00.00", "hl": "en", "gl": "US"},
+        {},
+    ),
 ]
 
 
+def _parse_json3_events(data: dict) -> list[dict]:
+    entries = []
+    for event in data.get("events", []):
+        if "segs" not in event:
+            continue
+        text = "".join(s.get("utf8", "") for s in event["segs"]).strip()
+        if not text or text == "\n":
+            continue
+        start_ms = event.get("tStartMs", 0)
+        dur_ms = event.get("dDurationMs", 0)
+        entries.append({"text": text, "start": start_ms / 1000, "duration": dur_ms / 1000})
+    return entries
+
+
+def _pick_en_track(tracks: list[dict]) -> dict | None:
+    return next(
+        (t for t in tracks if t.get("languageCode", "").startswith("en") and t.get("kind") == "asr"),
+        next((t for t in tracks if t.get("languageCode", "").startswith("en")), None),
+    )
+
+
 def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript via YouTube InnerTube API using httpx with residential proxy."""
+    """Fetch transcript via YouTube InnerTube API + watch-page fallback, through residential proxy."""
     import httpx
 
     proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/") or None
     print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
 
-    # Load cookies from file into a dict for httpx
     cookies: dict[str, str] = {}
     cookies_path = _get_cookies_file()
     if cookies_path:
@@ -72,16 +117,21 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             jar = http.cookiejar.MozillaCookieJar()
             jar.load(cookies_path, ignore_discard=True, ignore_expires=True)
             cookies = {c.name: c.value for c in jar if "youtube.com" in (c.domain or "")}
-            print(f"[YTShorts] Loaded {len(cookies)} cookies for YouTube")
+            print(f"[YTShorts] Loaded {len(cookies)} YouTube cookies")
         except Exception as ce:
             print(f"[YTShorts] Cookie load warning: {ce}")
 
-    with httpx.Client(proxy=proxy, timeout=30, cookies=cookies) as client:
-        for client_info in _INNERTUBE_CLIENTS:
+    headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
+
+    with httpx.Client(proxy=proxy, timeout=30, cookies=cookies, headers={"User-Agent": _BROWSER_UA}) as client:
+
+        # ── Strategy 1: InnerTube player API ─────────────────────────────────
+        for client_info, extra_ctx in _INNERTUBE_CLIENTS:
             try:
+                ctx = {"client": client_info, **extra_ctx}
                 resp = client.post(
                     "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
-                    json={"videoId": video_id, "context": {"client": client_info}},
+                    json={"videoId": video_id, "context": ctx},
                     headers={"Content-Type": "application/json"},
                 )
                 if not resp.is_success:
@@ -92,7 +142,7 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
                 status = data.get("playabilityStatus", {}).get("status", "")
                 if status in ("LOGIN_REQUIRED", "ERROR"):
                     reason = data.get("playabilityStatus", {}).get("reason", "")
-                    print(f"[YTShorts] InnerTube {client_info['clientName']} status={status} reason={reason}")
+                    print(f"[YTShorts] InnerTube {client_info['clientName']} {status}: {reason}")
                     continue
 
                 tracks = (
@@ -104,11 +154,7 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
                     print(f"[YTShorts] InnerTube {client_info['clientName']} no caption tracks")
                     continue
 
-                # Prefer auto-generated English, fall back to any English
-                en_track = next(
-                    (t for t in tracks if t.get("languageCode", "").startswith("en") and t.get("kind") == "asr"),
-                    next((t for t in tracks if t.get("languageCode", "").startswith("en")), None),
-                )
+                en_track = _pick_en_track(tracks)
                 if not en_track:
                     langs = [t.get("languageCode") for t in tracks]
                     return [], f"No English captions. Available: {langs}"
@@ -118,28 +164,56 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
                     print(f"[YTShorts] Caption fetch HTTP {cap_resp.status_code}")
                     continue
 
-                cap_data = cap_resp.json()
-                entries = []
-                for event in cap_data.get("events", []):
-                    if "segs" not in event:
-                        continue
-                    text = "".join(s.get("utf8", "") for s in event["segs"]).strip()
-                    if not text or text == "\n":
-                        continue
-                    start_ms = event.get("tStartMs", 0)
-                    dur_ms = event.get("dDurationMs", 0)
-                    entries.append({"text": text, "start": start_ms / 1000, "duration": dur_ms / 1000})
-
+                entries = _parse_json3_events(cap_resp.json())
                 if entries:
                     print(f"[YTShorts] Transcript via InnerTube/{client_info['clientName']}: {len(entries)} entries")
                     return entries, ""
-
-                print(f"[YTShorts] InnerTube {client_info['clientName']} returned empty transcript")
+                print(f"[YTShorts] InnerTube {client_info['clientName']} empty transcript")
 
             except Exception as e:
-                print(f"[YTShorts] InnerTube {client_info['clientName']} error: {type(e).__name__}: {e!r}")
+                print(f"[YTShorts] InnerTube {client_info['clientName']}: {type(e).__name__}: {e!r}")
 
-    return [], "Could not fetch transcript — all InnerTube clients failed (check Railway logs for details)"
+        # ── Strategy 2: parse ytInitialPlayerResponse from watch page HTML ───
+        print(f"[YTShorts] Trying watch-page HTML scrape...")
+        try:
+            page = client.get(
+                f"https://www.youtube.com/watch?v={video_id}&hl=en",
+                headers={"Accept-Language": "en-US,en;q=0.9"},
+            )
+            if page.is_success:
+                # Extract captionTracks baseUrls directly — works even if full JSON parse fails
+                raw_urls = re.findall(
+                    r'"baseUrl"\s*:\s*"(https://www\\.youtube\\.com/api/timedtext[^"]+)"',
+                    page.text,
+                )
+                # Also try unescaped variant
+                if not raw_urls:
+                    raw_urls = re.findall(
+                        r'"baseUrl":"(https://www\.youtube\.com/api/timedtext[^"]+)"',
+                        page.text,
+                    )
+                # Decode unicode escapes (\u0026 → &)
+                urls = [u.encode().decode("unicode_escape") for u in raw_urls]
+                # Prefer English auto (lang=en&kind=asr) then any English
+                en_url = next(
+                    (u for u in urls if "lang=en" in u and "kind=asr" in u),
+                    next((u for u in urls if "lang=en" in u), None),
+                )
+                if en_url:
+                    cap_resp = client.get(f"{en_url}&fmt=json3")
+                    if cap_resp.is_success:
+                        entries = _parse_json3_events(cap_resp.json())
+                        if entries:
+                            print(f"[YTShorts] Transcript via watch-page scrape: {len(entries)} entries")
+                            return entries, ""
+                else:
+                    print(f"[YTShorts] Watch-page: found {len(urls)} timedtext URLs but none English")
+            else:
+                print(f"[YTShorts] Watch-page HTTP {page.status_code}")
+        except Exception as e:
+            print(f"[YTShorts] Watch-page scrape error: {type(e).__name__}: {e!r}")
+
+    return [], "Could not fetch transcript — all methods failed. Check Railway logs for details."
 
 
 def _extract_video_id(url: str) -> str:
