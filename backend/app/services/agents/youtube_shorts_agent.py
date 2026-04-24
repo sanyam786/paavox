@@ -29,29 +29,53 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
 
     proxy = os.environ.get("YOUTUBE_PROXY", "").strip()
     proxies = {"https": proxy, "http": proxy} if proxy else None
+    langs = ["en", "en-US", "en-GB", "en-IN"]
+
+    def _to_entries(raw) -> list[dict]:
+        entries = []
+        for e in raw:
+            if isinstance(e, dict):
+                entries.append({"text": e["text"], "start": e["start"], "duration": e["duration"]})
+            else:
+                entries.append({"text": e.text, "start": e.start, "duration": e.duration})
+        return entries
 
     try:
-        # Support both old (class method) and new (instance method) API styles
+        raw = None
+
+        # ── Strategy 1: instance .fetch() — newest API ────────────────────────
         try:
-            api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
-            raw = api.get_transcript(video_id, languages=["en", "en-US", "en-GB", "en-IN"])
-        except TypeError:
-            # Older versions: proxies go in get_transcript, not constructor
+            try:
+                api = YouTubeTranscriptApi(proxies=proxies) if proxies else YouTubeTranscriptApi()
+            except TypeError:
+                api = YouTubeTranscriptApi()
+            if hasattr(api, "fetch"):
+                try:
+                    raw = list(api.fetch(video_id, languages=langs))
+                except TypeError:
+                    raw = list(api.fetch(video_id))
+        except Exception:
+            pass
+
+        # ── Strategy 2: instance .get_transcript() ────────────────────────────
+        if raw is None:
+            try:
+                api = YouTubeTranscriptApi()
+                if hasattr(api, "get_transcript"):
+                    raw = api.get_transcript(video_id, languages=langs)
+            except Exception:
+                pass
+
+        # ── Strategy 3: class method .get_transcript() — old API ─────────────
+        if raw is None:
             raw = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=["en", "en-US", "en-GB", "en-IN"], proxies=proxies
+                video_id, languages=langs, proxies=proxies
             )
 
-        # Entries may be dicts or objects depending on version
-        entries = [
-            {
-                "text": e["text"] if isinstance(e, dict) else e.text,
-                "start": e["start"] if isinstance(e, dict) else e.start,
-                "duration": e["duration"] if isinstance(e, dict) else e.duration,
-            }
-            for e in raw
-        ]
+        entries = _to_entries(raw)
         print(f"[YTShorts] Transcript: {len(entries)} entries (proxy={'yes' if proxy else 'no'})")
         return entries, ""
+
     except TranscriptsDisabled:
         return [], "Captions are disabled for this video"
     except NoTranscriptFound:
