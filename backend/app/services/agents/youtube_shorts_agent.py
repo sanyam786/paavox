@@ -488,31 +488,22 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
 
             print(f"[YTShorts] Downloaded {raw_size // 1024}KB, seeking to {start_seconds}s for {duration}s clip")
 
-            # Probe: log stream info so we can diagnose format issues
-            probe = subprocess.run(
-                [_ffmpeg, "-v", "error", "-show_streams", "-i", raw_path],
-                capture_output=True, text=True, timeout=15,
-            )
-            print(f"[YTShorts] ffprobe streams: {(probe.stdout or probe.stderr)[:400]}")
-
             # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
-            # Fast seek (-ss before -i) resets output timestamps to 0, so -t works correctly.
-            # Slow seek keeps original timestamps → -t 27 fires immediately if ts > 27 → 0 frames.
+            # Root cause of frame=0/time=N/A: YouTube format 18 is VFR (variable frame rate).
+            # libx264 cannot encode without a known frame rate → add -r 30 to force CFR.
+            # Fast seek (-ss before -i) resets output timestamps to 0 so -t works correctly.
             ff_cmd = [
                 _ffmpeg, "-y",
-                "-ss", str(start_seconds),   # fast seek BEFORE input (resets output ts to 0)
+                "-ss", str(start_seconds),
                 "-i", raw_path,
                 "-t", str(duration),
+                "-r", "30",                  # force CFR — fixes VFR input with libx264
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
-                "-af", "asetpts=PTS-STARTPTS",  # reset audio timestamps
             ]
             if crop_vertical:
-                # W must be even for libx264; X is just the center offset (no *2)
-                ff_cmd += ["-vf", "crop=trunc(ih*9/16/2)*2:ih:(iw-trunc(ih*9/16/2)*2)/2:0,scale=1080:1920,setpts=PTS-STARTPTS"]
-            else:
-                ff_cmd += ["-vf", "setpts=PTS-STARTPTS"]
+                ff_cmd += ["-vf", "crop=trunc(ih*9/16/2)*2:ih:(iw-trunc(ih*9/16/2)*2)/2:0,scale=1080:1920"]
             ff_cmd.append(str(output_path))
 
             try:
