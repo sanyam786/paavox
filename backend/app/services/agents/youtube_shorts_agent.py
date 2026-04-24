@@ -495,19 +495,24 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
             )
             print(f"[YTShorts] ffprobe streams: {(probe.stdout or probe.stderr)[:400]}")
 
-            # ── 2. Encode / crop with ffmpeg (slow/accurate seek after -i) ────
+            # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
+            # Fast seek (-ss before -i) resets output timestamps to 0, so -t works correctly.
+            # Slow seek keeps original timestamps → -t 27 fires immediately if ts > 27 → 0 frames.
             ff_cmd = [
                 _ffmpeg, "-y",
+                "-ss", str(start_seconds),   # fast seek BEFORE input (resets output ts to 0)
                 "-i", raw_path,
-                "-ss", str(start_seconds),   # slow seek after input (accurate)
                 "-t", str(duration),
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
+                "-af", "asetpts=PTS-STARTPTS",  # reset audio timestamps
             ]
             if crop_vertical:
-                # trunc to even numbers — libx264 requires width/height divisible by 2
-                ff_cmd += ["-vf", "crop=trunc(ih*9/16/2)*2:ih:trunc((iw-trunc(ih*9/16/2)*2)/2)*2:0,scale=1080:1920"]
+                # W must be even for libx264; X is just the center offset (no *2)
+                ff_cmd += ["-vf", "crop=trunc(ih*9/16/2)*2:ih:(iw-trunc(ih*9/16/2)*2)/2:0,scale=1080:1920,setpts=PTS-STARTPTS"]
+            else:
+                ff_cmd += ["-vf", "setpts=PTS-STARTPTS"]
             ff_cmd.append(str(output_path))
 
             try:
