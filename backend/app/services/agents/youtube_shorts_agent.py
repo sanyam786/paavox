@@ -346,12 +346,14 @@ class YouTubeShortsAgent(BaseAgent):
         video_title = "YouTube Video"
         try:
             _yt_dlp = _yt_dlp_bin()
+            _proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/")
+            title_cmd = [_yt_dlp, "--print", "title", "--no-download", "--no-playlist"]
+            if _proxy:
+                title_cmd += ["--proxy", _proxy]
+            title_cmd.append(url)
             r = await loop.run_in_executor(
                 None,
-                lambda: subprocess.run(
-                    [_yt_dlp, "--print", "title", "--no-download", "--no-playlist", url],
-                    capture_output=True, text=True, timeout=20,
-                ),
+                lambda: subprocess.run(title_cmd, capture_output=True, text=True, timeout=20),
             )
             if r.returncode == 0 and r.stdout.strip():
                 video_title = r.stdout.strip()
@@ -444,6 +446,7 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
             return f"{h:02d}:{m:02d}:{s:02d}"
 
         cookies = _get_cookies_file()
+        proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/") or None
 
         with _tf.TemporaryDirectory() as tmpdir:
             raw_path = os.path.join(tmpdir, "raw.mp4")
@@ -459,6 +462,8 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
             ]
             if cookies:
                 dl_cmd += ["--cookies", cookies]
+            if proxy:
+                dl_cmd += ["--proxy", proxy]
             dl_cmd.append(url)
 
             try:
