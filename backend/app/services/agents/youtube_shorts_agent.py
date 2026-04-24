@@ -118,19 +118,26 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     # public URLs so we fetch them directly (no proxy needed for the fetch).
     print("[YTShorts] Trying yt-dlp dump-json...")
     try:
-        cmd = [
-            _yt_dlp_bin(),
-            "--skip-download", "--dump-json", "--no-playlist", "-q",
-            # mweb now requires a GVS PO Token → use tv_embedded + android instead
-            "--extractor-args", "youtube:player_client=tv_embedded,android,web",
-        ]
-        if proxy:
-            cmd += ["--proxy", proxy]
-        if cookies_path:
-            cmd += ["--cookies", cookies_path]
-        cmd.append(url)
+        def _dump_json_cmd(with_cookies: bool) -> list[str]:
+            c = [
+                _yt_dlp_bin(),
+                "--skip-download", "--dump-json", "--no-playlist", "-q",
+                # mweb needs GVS PO Token; tv_embedded + android work without one
+                "--extractor-args", "youtube:player_client=tv_embedded,android,web",
+            ]
+            if proxy:
+                c += ["--proxy", proxy]
+            # Logged-in cookies require DATASYNC_ID. Try without cookies first;
+            # fall back to with cookies for restricted videos.
+            if with_cookies and cookies_path:
+                c += ["--cookies", cookies_path]
+            c.append(url)
+            return c
 
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        r = subprocess.run(_dump_json_cmd(with_cookies=False), capture_output=True, text=True, timeout=90)
+        if r.returncode != 0:
+            print(f"[YTShorts] yt-dlp dump-json (no cookies) rc={r.returncode}, retrying with cookies...")
+            r = subprocess.run(_dump_json_cmd(with_cookies=True), capture_output=True, text=True, timeout=90)
         print(f"[YTShorts] yt-dlp dump-json rc={r.returncode}, stdout_len={len(r.stdout)}")
         if r.returncode == 0 and r.stdout.strip():
             info = json.loads(r.stdout)
@@ -244,21 +251,33 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             from groq import Groq as _Groq
             with _tf2.TemporaryDirectory() as tmpdir:
                 audio_path = os.path.join(tmpdir, "audio.mp3")
-                dl_cmd = [
-                    _yt_dlp_bin(),
-                    "-x", "--audio-format", "mp3", "--audio-quality", "5",
-                    "--no-playlist", "-q",
-                    # Limit to 10 min to stay under Groq's 25MB file limit
-                    "--download-sections", "*0:00-0:10:00",
-                    "-o", audio_path,
-                ]
-                if proxy:
-                    dl_cmd += ["--proxy", proxy]
-                if cookies_path:
-                    dl_cmd += ["--cookies", cookies_path]
-                dl_cmd.append(url)
 
-                dl = subprocess.run(dl_cmd, capture_output=True, text=True, timeout=180)
+                def _audio_dl_cmd(with_cookies: bool) -> list[str]:
+                    cmd = [
+                        _yt_dlp_bin(),
+                        "-x", "--audio-format", "mp3", "--audio-quality", "5",
+                        "--no-playlist", "-q",
+                        "--download-sections", "*0:00-0:10:00",
+                        "-o", audio_path,
+                    ]
+                    if proxy:
+                        cmd += ["--proxy", proxy]
+                    # Cookies with a logged-in account require DATASYNC_ID from YouTube.
+                    # Public videos can be downloaded without cookies, so try that first.
+                    if with_cookies and cookies_path:
+                        cmd += ["--cookies", cookies_path]
+                    cmd.append(url)
+                    return cmd
+
+                # Attempt 1: no cookies (avoids DATASYNC_ID requirement)
+                dl = subprocess.run(_audio_dl_cmd(with_cookies=False), capture_output=True, text=True, timeout=180)
+                if dl.returncode != 0 or not os.path.exists(audio_path):
+                    print(f"[YTShorts] Audio dl (no cookies) failed (rc={dl.returncode}): {dl.stderr[-200:]}")
+                    # Attempt 2: with cookies (needed for age-restricted / private videos)
+                    if os.path.exists(audio_path):
+                        os.remove(audio_path)
+                    dl = subprocess.run(_audio_dl_cmd(with_cookies=True), capture_output=True, text=True, timeout=180)
+
                 if dl.returncode == 0 and os.path.exists(audio_path):
                     size_mb = os.path.getsize(audio_path) / 1_048_576
                     print(f"[YTShorts] Audio downloaded: {size_mb:.1f} MB — sending to Groq Whisper")
