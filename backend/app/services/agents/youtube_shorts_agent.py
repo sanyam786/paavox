@@ -50,70 +50,92 @@ def _get_cookies_file() -> str | None:
 
 
 def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript using yt-dlp (handles proxy + cookies natively)."""
-    import glob
-    import tempfile as _tf
+    """Fetch transcript via youtube-transcript-api with proxy forced at the requests level."""
+    from youtube_transcript_api import (
+        YouTubeTranscriptApi,
+        NoTranscriptFound,
+        TranscriptsDisabled,
+    )
+    import requests as _requests
 
     proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/")
-    cookies = _get_cookies_file()
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    _ytdlp = _yt_dlp_bin()
-    print(f"[YTShorts] Fetching transcript for {video_id} via yt-dlp (proxy={'yes' if proxy else 'no'}, cookies={'yes' if cookies else 'no'})")
+    langs = ["en", "en-US", "en-GB", "en-IN"]
+    print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
 
-    with _tf.TemporaryDirectory() as tmpdir:
-        out_tmpl = os.path.join(tmpdir, "%(id)s")
-        cmd = [
-            _ytdlp,
-            "--skip-download",
-            "--write-auto-sub",
-            "--write-sub",
-            "--sub-lang", "en,en-US,en-GB,en-IN",
-            "--sub-format", "json3",
-            "--no-playlist",
-            "--extractor-args", "youtube:player_client=android,web",
-            "-o", out_tmpl,
-        ]
+    # Monkeypatch requests.Session so every session the library creates uses the proxy.
+    # GenericProxyConfig / proxies kwarg don't reliably route — this approach is definitive.
+    _orig_init = _requests.Session.__init__
+
+    def _proxied_init(self, *a, **kw):
+        _orig_init(self, *a, **kw)
         if proxy:
-            cmd += ["--proxy", proxy]
-        if cookies:
-            cmd += ["--cookies", cookies]
-        cmd.append(url)
+            self.proxies.update({"http": proxy, "https": proxy})
 
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        except subprocess.TimeoutExpired:
-            return [], "yt-dlp subtitle fetch timed out (>60s)"
-        except FileNotFoundError:
-            return [], "yt-dlp is not installed"
+    if proxy:
+        _requests.Session.__init__ = _proxied_init
 
-        json3_files = glob.glob(os.path.join(tmpdir, "*.json3"))
-        if not json3_files:
-            detail = (r.stderr or r.stdout)[-400:].strip()
-            return [], f"No subtitles found. {detail}"
+    def _to_entries(raw) -> list[dict]:
+        entries = []
+        for e in raw:
+            if isinstance(e, dict):
+                entries.append({"text": e["text"], "start": e["start"], "duration": e["duration"]})
+            else:
+                entries.append({"text": e.text, "start": e.start, "duration": e.duration})
+        return entries
 
-        try:
-            with open(json3_files[0]) as f:
-                data = json.load(f)
-            entries = []
-            for event in data.get("events", []):
-                if "segs" not in event:
-                    continue
-                text = "".join(s.get("utf8", "") for s in event["segs"]).strip()
-                if not text or text == "\n":
-                    continue
-                start_ms = event.get("tStartMs", 0)
-                dur_ms = event.get("dDurationMs", 0)
-                entries.append({
-                    "text": text,
-                    "start": start_ms / 1000,
-                    "duration": dur_ms / 1000,
-                })
-            if not entries:
-                return [], "yt-dlp produced an empty transcript"
-            print(f"[YTShorts] Transcript via yt-dlp: {len(entries)} entries")
-            return entries, ""
-        except Exception as e:
-            return [], f"Failed to parse yt-dlp subtitle: {e}"
+    try:
+        api = YouTubeTranscriptApi()
+
+        # Strategy 1: fetch(languages=…) — newest API
+        if hasattr(api, "fetch"):
+            try:
+                raw = list(api.fetch(video_id, languages=langs))
+                entries = _to_entries(raw)
+                print(f"[YTShorts] Transcript via fetch(languages): {len(entries)} entries")
+                return entries, ""
+            except (TranscriptsDisabled, NoTranscriptFound):
+                raise
+            except TypeError:
+                pass
+            except Exception as e:
+                print(f"[YTShorts] fetch(languages) failed: {type(e).__name__}: {e!r}")
+
+            try:
+                raw = list(api.fetch(video_id))
+                entries = _to_entries(raw)
+                print(f"[YTShorts] Transcript via fetch(): {len(entries)} entries")
+                return entries, ""
+            except (TranscriptsDisabled, NoTranscriptFound):
+                raise
+            except Exception as e:
+                print(f"[YTShorts] fetch() failed: {type(e).__name__}: {e!r}")
+
+        # Strategy 2: list().find_transcript().fetch() — 0.6.x
+        if hasattr(api, "list"):
+            try:
+                tlist = api.list(video_id)
+                transcript = tlist.find_transcript(langs)
+                raw = list(transcript.fetch())
+                entries = _to_entries(raw)
+                print(f"[YTShorts] Transcript via list().find().fetch(): {len(entries)} entries")
+                return entries, ""
+            except (TranscriptsDisabled, NoTranscriptFound):
+                raise
+            except Exception as e:
+                print(f"[YTShorts] list().find().fetch() failed: {type(e).__name__}: {e!r}")
+
+        raise Exception("no compatible youtube-transcript-api method found")
+
+    except TranscriptsDisabled:
+        return [], "Captions are disabled for this video"
+    except NoTranscriptFound:
+        return [], "No English transcript found for this video"
+    except Exception as e:
+        return [], str(e)
+    finally:
+        # Always restore the original Session.__init__
+        if proxy:
+            _requests.Session.__init__ = _orig_init
 
 
 def _extract_video_id(url: str) -> str:
