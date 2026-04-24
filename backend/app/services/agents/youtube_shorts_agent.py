@@ -58,21 +58,16 @@ _BROWSER_UA = (
 # (client_info, extra_context) — extra_context is merged into the "context" dict
 _INNERTUBE_CLIENTS: list[tuple[dict, dict]] = [
     (
-        {"clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "clientVersion": "2.0", "hl": "en", "gl": "US"},
-        {"thirdParty": {"embedUrl": "https://www.youtube.com/"}},
-    ),
-    (
         {"clientName": "ANDROID_TESTSUITE", "clientVersion": "1.9", "hl": "en", "gl": "US"},
         {},
     ),
     (
-        {
-            "clientName": "IOS", "clientVersion": "19.29.1",
-            "deviceMake": "Apple", "deviceModel": "iPhone16,2",
-            "osName": "iPhone", "osVersion": "17.5.1.21F90",
-            "hl": "en", "gl": "US",
-        },
+        {"clientName": "MWEB", "clientVersion": "2.20231219.01.00", "hl": "en", "gl": "US"},
         {},
+    ),
+    (
+        {"clientName": "WEB_EMBEDDED_PLAYER", "clientVersion": "2.20231121.08.00", "hl": "en", "gl": "US"},
+        {"thirdParty": {"embedUrl": "https://www.youtube.com/"}},
     ),
     (
         {"clientName": "WEB", "clientVersion": "2.20240726.00.00", "hl": "en", "gl": "US"},
@@ -115,12 +110,14 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'}, cookies={'yes' if cookies_path else 'no'})")
 
     # ── Strategy 1: yt-dlp --dump-json → extract caption URL → fetch ─────────
-    # yt-dlp handles all YouTube auth/token complexity; we only fetch the final URL.
+    # yt-dlp handles YouTube auth/token complexity. Caption URLs are pre-signed
+    # public URLs so we fetch them directly (no proxy needed for the fetch).
+    print("[YTShorts] Trying yt-dlp dump-json...")
     try:
         cmd = [
             _yt_dlp_bin(),
             "--skip-download", "--dump-json", "--no-playlist", "-q",
-            "--extractor-args", "youtube:player_client=android,web",
+            "--extractor-args", "youtube:player_client=mweb,web,android",
         ]
         if proxy:
             cmd += ["--proxy", proxy]
@@ -128,13 +125,13 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             cmd += ["--cookies", cookies_path]
         cmd.append(url)
 
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        print(f"[YTShorts] yt-dlp dump-json rc={r.returncode}, stdout_len={len(r.stdout)}")
         if r.returncode == 0 and r.stdout.strip():
             info = json.loads(r.stdout)
             auto_caps = info.get("automatic_captions", {})
             subs = info.get("subtitles", {})
 
-            # Find English captions
             en_formats: list[dict] = []
             for key in ("en", "en-US", "en-GB", "en-IN"):
                 en_formats = auto_caps.get(key) or subs.get(key) or []
@@ -146,29 +143,30 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
                         en_formats = auto_caps.get(key) or subs.get(key) or []
                         break
 
+            print(f"[YTShorts] yt-dlp dump-json: {len(en_formats)} English caption formats found")
             if en_formats:
                 cap_url = next(
                     (f["url"] for f in en_formats if f.get("ext") == "json3"),
                     en_formats[0].get("url"),
                 )
                 if cap_url:
-                    proxy_arg = proxy if proxy else None
-                    with httpx.Client(proxy=proxy_arg, timeout=30, headers={"User-Agent": _BROWSER_UA}) as hc:
+                    # Caption URLs are pre-signed; fetch directly (no proxy needed)
+                    with httpx.Client(timeout=30, headers={"User-Agent": _BROWSER_UA}) as hc:
                         cap_resp = hc.get(f"{cap_url}&fmt=json3")
+                        print(f"[YTShorts] Caption URL fetch HTTP {cap_resp.status_code}")
                         if cap_resp.is_success:
                             entries = _parse_json3_events(cap_resp.json())
                             if entries:
                                 print(f"[YTShorts] Transcript via yt-dlp dump-json: {len(entries)} entries")
                                 return entries, ""
-                        print(f"[YTShorts] Caption URL fetch HTTP {cap_resp.status_code}")
             else:
                 avail = list(auto_caps) + list(subs)
-                print(f"[YTShorts] yt-dlp dump-json: no English captions. Available: {avail}")
+                print(f"[YTShorts] yt-dlp dump-json: no English captions. Available langs: {avail}")
         else:
-            stderr = (r.stderr or "")[-300:].strip()
-            print(f"[YTShorts] yt-dlp dump-json failed (rc={r.returncode}): {stderr}")
+            stderr = (r.stderr or "")[-400:].strip()
+            print(f"[YTShorts] yt-dlp dump-json failed: {stderr}")
     except subprocess.TimeoutExpired:
-        print("[YTShorts] yt-dlp dump-json timed out")
+        print("[YTShorts] yt-dlp dump-json timed out (>90s)")
     except Exception as e:
         print(f"[YTShorts] yt-dlp dump-json error: {type(e).__name__}: {e!r}")
 
@@ -231,6 +229,59 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
 
             except Exception as e:
                 print(f"[YTShorts] InnerTube {client_info['clientName']}: {type(e).__name__}: {e!r}")
+
+    # ── Strategy 3: Groq Whisper — download audio and transcribe ─────────────
+    print("[YTShorts] Falling back to Groq Whisper audio transcription...")
+    import tempfile as _tf2
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if groq_key:
+        try:
+            from groq import Groq as _Groq
+            with _tf2.TemporaryDirectory() as tmpdir:
+                audio_path = os.path.join(tmpdir, "audio.mp3")
+                dl_cmd = [
+                    _yt_dlp_bin(),
+                    "-x", "--audio-format", "mp3", "--audio-quality", "5",
+                    "--no-playlist", "-q",
+                    # Limit to 10 min to stay under Groq's 25MB file limit
+                    "--download-sections", "*0:00-0:10:00",
+                    "-o", audio_path,
+                ]
+                if proxy:
+                    dl_cmd += ["--proxy", proxy]
+                if cookies_path:
+                    dl_cmd += ["--cookies", cookies_path]
+                dl_cmd.append(url)
+
+                dl = subprocess.run(dl_cmd, capture_output=True, text=True, timeout=180)
+                if dl.returncode == 0 and os.path.exists(audio_path):
+                    size_mb = os.path.getsize(audio_path) / 1_048_576
+                    print(f"[YTShorts] Audio downloaded: {size_mb:.1f} MB — sending to Groq Whisper")
+                    with open(audio_path, "rb") as af:
+                        resp = _Groq(api_key=groq_key).audio.transcriptions.create(
+                            file=("audio.mp3", af),
+                            model="whisper-large-v3",
+                            response_format="verbose_json",
+                            timestamp_granularities=["segment"],
+                            language="en",
+                        )
+                    entries = [
+                        {"text": seg.text.strip(), "start": seg.start, "duration": seg.end - seg.start}
+                        for seg in (resp.segments or [])
+                        if seg.text.strip()
+                    ]
+                    if entries:
+                        print(f"[YTShorts] Transcript via Groq Whisper: {len(entries)} segments")
+                        return entries, ""
+                    print("[YTShorts] Groq Whisper returned empty transcript")
+                else:
+                    print(f"[YTShorts] Audio download failed (rc={dl.returncode}): {dl.stderr[-300:]}")
+        except subprocess.TimeoutExpired:
+            print("[YTShorts] Audio download timed out")
+        except Exception as e:
+            print(f"[YTShorts] Groq Whisper error: {type(e).__name__}: {e!r}")
+    else:
+        print("[YTShorts] GROQ_API_KEY not set — skipping Whisper fallback")
 
     return [], "Could not fetch transcript — all methods failed. Check Railway logs for details."
 
