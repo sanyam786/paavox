@@ -57,10 +57,14 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
         TranscriptsDisabled,
     )
 
-    proxy = os.environ.get("YOUTUBE_PROXY", "").strip()
-    proxies = {"https": proxy, "http": proxy} if proxy else None
+    proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/")
     langs = ["en", "en-US", "en-GB", "en-IN"]
     print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
+
+    # Set env vars so requests (used internally) picks up the proxy automatically
+    if proxy:
+        os.environ["HTTP_PROXY"] = proxy
+        os.environ["HTTPS_PROXY"] = proxy
 
     def _to_entries(raw) -> list[dict]:
         entries = []
@@ -76,24 +80,22 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
     try:
         # Build API instance — try proxy_config (new API, 0.6.x+) then proxies kwarg (old API)
         api = None
-        if proxies:
+        if proxy:
             try:
                 from youtube_transcript_api.proxies import GenericProxyConfig
                 api = YouTubeTranscriptApi(
-                    proxy_config=GenericProxyConfig(
-                        http_url=proxy, https_url=proxy
-                    )
+                    proxy_config=GenericProxyConfig(http_url=proxy, https_url=proxy)
                 )
                 print(f"[YTShorts] Using proxy via GenericProxyConfig")
             except (ImportError, Exception) as e:
-                print(f"[YTShorts] GenericProxyConfig failed ({e}), trying proxies kwarg")
+                print(f"[YTShorts] GenericProxyConfig failed ({e!r}), trying proxies kwarg")
 
             if api is None:
                 try:
-                    api = YouTubeTranscriptApi(proxies=proxies)
+                    api = YouTubeTranscriptApi(proxies={"http": proxy, "https": proxy})
                     print(f"[YTShorts] Using proxy via proxies kwarg")
                 except TypeError:
-                    print(f"[YTShorts] proxies kwarg not supported — proxy NOT applied!")
+                    print(f"[YTShorts] proxies kwarg not supported — relying on HTTP_PROXY env vars")
 
         if api is None:
             api = YouTubeTranscriptApi()
@@ -110,8 +112,8 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             except TypeError:
                 pass  # languages kwarg not supported, try without
             except Exception as e:
-                errors.append(f"fetch(languages): {e}")
-                print(f"[YTShorts] fetch(languages) failed: {e}")
+                errors.append(f"fetch(languages): {type(e).__name__}: {e}")
+                print(f"[YTShorts] fetch(languages) failed: {type(e).__name__}: {e!r}")
 
             # Strategy 1b: fetch without languages kwarg
             try:
@@ -122,8 +124,8 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             except (TranscriptsDisabled, NoTranscriptFound):
                 raise
             except Exception as e:
-                errors.append(f"fetch(): {e}")
-                print(f"[YTShorts] fetch() failed: {e}")
+                errors.append(f"fetch(): {type(e).__name__}: {e}")
+                print(f"[YTShorts] fetch() failed: {type(e).__name__}: {e!r}")
 
         # ── Strategy 2: api.list() → find_transcript() → fetch() ─────────────
         if hasattr(api, "list"):
@@ -137,8 +139,8 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             except (TranscriptsDisabled, NoTranscriptFound):
                 raise
             except Exception as e:
-                errors.append(f"list().find().fetch(): {e}")
-                print(f"[YTShorts] list().find().fetch() failed: {e}")
+                errors.append(f"list().find().fetch(): {type(e).__name__}: {e}")
+                print(f"[YTShorts] list().find().fetch() failed: {type(e).__name__}: {e!r}")
 
         # ── Strategy 3: instance .get_transcript() — older API ───────────────
         if hasattr(api, "get_transcript"):
@@ -150,8 +152,8 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
             except (TranscriptsDisabled, NoTranscriptFound):
                 raise
             except Exception as e:
-                errors.append(f"instance.get_transcript(): {e}")
-                print(f"[YTShorts] instance.get_transcript() failed: {e}")
+                errors.append(f"instance.get_transcript(): {type(e).__name__}: {e}")
+                print(f"[YTShorts] instance.get_transcript() failed: {type(e).__name__}: {e!r}")
 
         summary = "; ".join(errors) if errors else "no compatible API method found"
         raise Exception(summary)
