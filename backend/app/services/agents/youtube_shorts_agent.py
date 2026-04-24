@@ -103,29 +103,88 @@ def _pick_en_track(tracks: list[dict]) -> dict | None:
 
 
 def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
-    """Fetch transcript via YouTube InnerTube API + watch-page fallback, through residential proxy."""
+    """
+    Fetch transcript via yt-dlp --dump-json (gets signed caption URL) then fetch that URL.
+    Falls back to direct InnerTube API calls if yt-dlp fails.
+    """
     import httpx
 
     proxy = os.environ.get("YOUTUBE_PROXY", "").strip().rstrip("/") or None
-    print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'})")
-
-    cookies: dict[str, str] = {}
     cookies_path = _get_cookies_file()
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    print(f"[YTShorts] Fetching transcript for {video_id} (proxy={'yes' if proxy else 'no'}, cookies={'yes' if cookies_path else 'no'})")
+
+    # ── Strategy 1: yt-dlp --dump-json → extract caption URL → fetch ─────────
+    # yt-dlp handles all YouTube auth/token complexity; we only fetch the final URL.
+    try:
+        cmd = [
+            _yt_dlp_bin(),
+            "--skip-download", "--dump-json", "--no-playlist", "-q",
+            "--extractor-args", "youtube:player_client=android,web",
+        ]
+        if proxy:
+            cmd += ["--proxy", proxy]
+        if cookies_path:
+            cmd += ["--cookies", cookies_path]
+        cmd.append(url)
+
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if r.returncode == 0 and r.stdout.strip():
+            info = json.loads(r.stdout)
+            auto_caps = info.get("automatic_captions", {})
+            subs = info.get("subtitles", {})
+
+            # Find English captions
+            en_formats: list[dict] = []
+            for key in ("en", "en-US", "en-GB", "en-IN"):
+                en_formats = auto_caps.get(key) or subs.get(key) or []
+                if en_formats:
+                    break
+            if not en_formats:
+                for key in list(auto_caps) + list(subs):
+                    if key.startswith("en"):
+                        en_formats = auto_caps.get(key) or subs.get(key) or []
+                        break
+
+            if en_formats:
+                cap_url = next(
+                    (f["url"] for f in en_formats if f.get("ext") == "json3"),
+                    en_formats[0].get("url"),
+                )
+                if cap_url:
+                    proxy_arg = proxy if proxy else None
+                    with httpx.Client(proxy=proxy_arg, timeout=30, headers={"User-Agent": _BROWSER_UA}) as hc:
+                        cap_resp = hc.get(f"{cap_url}&fmt=json3")
+                        if cap_resp.is_success:
+                            entries = _parse_json3_events(cap_resp.json())
+                            if entries:
+                                print(f"[YTShorts] Transcript via yt-dlp dump-json: {len(entries)} entries")
+                                return entries, ""
+                        print(f"[YTShorts] Caption URL fetch HTTP {cap_resp.status_code}")
+            else:
+                avail = list(auto_caps) + list(subs)
+                print(f"[YTShorts] yt-dlp dump-json: no English captions. Available: {avail}")
+        else:
+            stderr = (r.stderr or "")[-300:].strip()
+            print(f"[YTShorts] yt-dlp dump-json failed (rc={r.returncode}): {stderr}")
+    except subprocess.TimeoutExpired:
+        print("[YTShorts] yt-dlp dump-json timed out")
+    except Exception as e:
+        print(f"[YTShorts] yt-dlp dump-json error: {type(e).__name__}: {e!r}")
+
+    # ── Strategy 2: InnerTube player API directly via httpx ──────────────────
+    print("[YTShorts] Falling back to InnerTube API...")
+    cookies_dict: dict[str, str] = {}
     if cookies_path:
         try:
             import http.cookiejar
             jar = http.cookiejar.MozillaCookieJar()
             jar.load(cookies_path, ignore_discard=True, ignore_expires=True)
-            cookies = {c.name: c.value for c in jar if "youtube.com" in (c.domain or "")}
-            print(f"[YTShorts] Loaded {len(cookies)} YouTube cookies")
-        except Exception as ce:
-            print(f"[YTShorts] Cookie load warning: {ce}")
+            cookies_dict = {c.name: c.value for c in jar if "youtube.com" in (c.domain or "")}
+        except Exception:
+            pass
 
-    headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
-
-    with httpx.Client(proxy=proxy, timeout=30, cookies=cookies, headers={"User-Agent": _BROWSER_UA}) as client:
-
-        # ── Strategy 1: InnerTube player API ─────────────────────────────────
+    with httpx.Client(proxy=proxy, timeout=30, cookies=cookies_dict, headers={"User-Agent": _BROWSER_UA}) as client:
         for client_info, extra_ctx in _INNERTUBE_CLIENTS:
             try:
                 ctx = {"client": client_info, **extra_ctx}
@@ -157,7 +216,7 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
                 en_track = _pick_en_track(tracks)
                 if not en_track:
                     langs = [t.get("languageCode") for t in tracks]
-                    return [], f"No English captions. Available: {langs}"
+                    return [], f"No English captions available. Tracks: {langs}"
 
                 cap_resp = client.get(f"{en_track['baseUrl']}&fmt=json3")
                 if not cap_resp.is_success:
@@ -172,46 +231,6 @@ def _fetch_transcript(video_id: str) -> tuple[list[dict], str]:
 
             except Exception as e:
                 print(f"[YTShorts] InnerTube {client_info['clientName']}: {type(e).__name__}: {e!r}")
-
-        # ── Strategy 2: parse ytInitialPlayerResponse from watch page HTML ───
-        print(f"[YTShorts] Trying watch-page HTML scrape...")
-        try:
-            page = client.get(
-                f"https://www.youtube.com/watch?v={video_id}&hl=en",
-                headers={"Accept-Language": "en-US,en;q=0.9"},
-            )
-            if page.is_success:
-                # Extract captionTracks baseUrls directly — works even if full JSON parse fails
-                raw_urls = re.findall(
-                    r'"baseUrl"\s*:\s*"(https://www\\.youtube\\.com/api/timedtext[^"]+)"',
-                    page.text,
-                )
-                # Also try unescaped variant
-                if not raw_urls:
-                    raw_urls = re.findall(
-                        r'"baseUrl":"(https://www\.youtube\.com/api/timedtext[^"]+)"',
-                        page.text,
-                    )
-                # Decode unicode escapes (\u0026 → &)
-                urls = [u.encode().decode("unicode_escape") for u in raw_urls]
-                # Prefer English auto (lang=en&kind=asr) then any English
-                en_url = next(
-                    (u for u in urls if "lang=en" in u and "kind=asr" in u),
-                    next((u for u in urls if "lang=en" in u), None),
-                )
-                if en_url:
-                    cap_resp = client.get(f"{en_url}&fmt=json3")
-                    if cap_resp.is_success:
-                        entries = _parse_json3_events(cap_resp.json())
-                        if entries:
-                            print(f"[YTShorts] Transcript via watch-page scrape: {len(entries)} entries")
-                            return entries, ""
-                else:
-                    print(f"[YTShorts] Watch-page: found {len(urls)} timedtext URLs but none English")
-            else:
-                print(f"[YTShorts] Watch-page HTTP {page.status_code}")
-        except Exception as e:
-            print(f"[YTShorts] Watch-page scrape error: {type(e).__name__}: {e!r}")
 
     return [], "Could not fetch transcript — all methods failed. Check Railway logs for details."
 
