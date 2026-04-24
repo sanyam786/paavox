@@ -451,15 +451,13 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
         with _tf.TemporaryDirectory() as tmpdir:
             raw_path = os.path.join(tmpdir, "raw.mp4")
 
-            # ── 1. Download clip section via yt-dlp ───────────────────────────
-            # Use format 18 (360p combined MP4, single stream — no DASH merge).
-            # DASH merging two streams through a proxy produces corrupted output.
-            # Fall back to any combined mp4, then any format as last resort.
+            # ── 1. Download full video at low quality via yt-dlp ─────────────
+            # Avoid --download-sections: it preserves original timestamps which
+            # breaks ffmpeg's -t cut. Format 18 = 360p combined, single stream,
+            # no DASH merge complexity. Falls back to lowest available quality.
             dl_cmd = [
                 _ytdlp,
-                "--download-sections", f"*{_ts(start_seconds)}-{_ts(end_seconds)}",
-                "--format", "22/18/best[ext=mp4]/best",
-                "--merge-output-format", "mp4",
+                "--format", "18/22/worstvideo[ext=mp4]+worstaudio[ext=m4a]/worst[ext=mp4]/worst",
                 "--no-playlist",
                 "-o", raw_path,
             ]
@@ -472,10 +470,10 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
             try:
                 dl_result = await loop.run_in_executor(
                     None,
-                    lambda: subprocess.run(dl_cmd, capture_output=True, text=True, timeout=300),
+                    lambda: subprocess.run(dl_cmd, capture_output=True, text=True, timeout=600),
                 )
             except subprocess.TimeoutExpired:
-                raise Exception("Download timed out (>5 min). Try a shorter clip.")
+                raise Exception("Download timed out (>10 min).")
             except FileNotFoundError:
                 raise Exception("yt-dlp is not installed on this server.")
 
@@ -488,9 +486,14 @@ Find the 3-5 best moments to clip as YouTube Shorts."""
                 detail = dl_result.stderr[-300:] if dl_result.stderr else ""
                 raise Exception(f"Downloaded file too small ({raw_size} bytes) — YouTube likely blocked the request. {detail}")
 
-            # ── 2. Encode / crop with ffmpeg ──────────────────────────────────
-            ff_cmd = [_ffmpeg, "-y", "-i", raw_path, "-t", str(duration)]
-            ff_cmd += [
+            print(f"[YTShorts] Downloaded {raw_size // 1024}KB, seeking to {start_seconds}s for {duration}s clip")
+
+            # ── 2. Encode / crop with ffmpeg (-ss BEFORE -i = fast input seek) ─
+            ff_cmd = [
+                _ffmpeg, "-y",
+                "-ss", str(start_seconds),   # fast seek before input
+                "-i", raw_path,
+                "-t", str(duration),
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
